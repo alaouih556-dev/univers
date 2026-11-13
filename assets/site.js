@@ -152,10 +152,10 @@ const inspos=[['salon-contemporain','Salon contemporain','Un salon lumineux où 
 /* ---------- Home ---------- */
 const EVENT={title:['Les Journées','Univers'],date:'12-30 NOV',sub:'Des prix exceptionnels dans toutes les collections.'};
 const showcase=[
- {img:'tables.webp',name:'Dune',by:'design Atelier Univers',url:'produit/tables-dune/'},
- {img:'view-0-0.webp',name:'Oval',by:'design Atelier Univers',url:'produit/fauteuils-oval/'},
- {img:'hero-cognac.webp',name:'Ambre',by:'design Atelier Univers',url:'produit/canapes-ambre/'},
- {img:'chambres.webp',name:'Sérénité',by:'design Atelier Univers',url:'produit/chambres-serenite/'}
+ {img:'hero-salle-manger.webp',name:'Dune',by:'design Atelier Univers',url:'produit/tables-dune/'},
+ {img:'hero-salon-beige.webp',name:'Oval',by:'design Atelier Univers',url:'produit/fauteuils-oval/'},
+ {img:'hero-fauteuil.webp',name:'Ambre',by:'design Atelier Univers',url:'produit/canapes-ambre/'},
+ {img:'hero-chambre.webp',name:'Sérénité',by:'design Atelier Univers',url:'produit/chambres-serenite/'}
 ];
 const eventLogo=(cls='')=>`<div class="ev-logo ${cls}"><span class="ev-mark" aria-hidden="true"><i></i><i></i><i></i></span><span class="ev-title">${EVENT.title.join('<br>')}</span><span class="ev-date">${EVENT.date}</span></div>`;
 function home(){
@@ -166,7 +166,7 @@ function home(){
   `<div class="ps ps-img"><img src="${local('chambres.webp')}" alt="" loading="lazy"><div class="ps-copy"><p class="ps-kick">Service conseil</p><p class="ps-h">Nos décorateurs<br>vous accompagnent</p><a class="btn-ghost" href="${h('demander-un-devis/')}">Prendre rendez-vous</a></div></div>`,
   `<div class="ps ps-img"><img src="${local('canapes.webp')}" alt="" loading="lazy"><div class="ps-copy"><p class="ps-kick">Savoir-faire</p><p class="ps-h">Fabrication<br>sur mesure</p><a class="btn-ghost" href="${h('fabrication-sur-mesure/')}">Découvrir l’atelier</a></div></div>`
  ];
- const mag=[['inspirations/salon-contemporain/','hero-cognac.webp','Ambre, design Atelier Univers','wide'],['inspirations/terrasse-mediterraneenne/','hero-ivoire.webp','Terrasse méditerranéenne',''],['collections/signature/','hero-noisette.webp','Créations Automne-Hiver 2026',''],['inspirations/atelier-coussins/','view-1-1.webp','Le détail textile','inside'],['inspirations/chambre-serenite/','chambres.webp','Chambre sérénité','']];
+ const mag=[['inspirations/salon-contemporain/','hero-salon-beige.webp','Salon contemporain, design Atelier Univers','wide'],['inspirations/terrasse-mediterraneenne/','hero-ivoire.webp','Terrasse méditerranéenne',''],['collections/signature/','hero-salle-manger.webp','Créations Automne-Hiver 2026',''],['inspirations/atelier-coussins/','hero-fauteuil.webp','Le détail textile','inside'],['inspirations/chambre-serenite/','hero-chambre.webp','Chambre sérénité','']];
  return `<main id="main" class="home">
  <section class="hs hs-event" id="hs-event"><img src="${local('hero-salon-vert.webp')}" alt="Salon contemporain aux tons verts et naturels" class="kb"><div class="hs-center">${eventLogo()}<a class="hs-cta" href="${h('contact/')}">Trouvez votre showroom</a></div><button class="hs-pause" id="hspause" aria-label="Pause">${I.pause}</button></section>
  ${showcase.map(s=>`<section class="hs"><img src="${local(s.img)}" alt="${esc(s.name)}" loading="lazy" class="kb"><a class="hs-cap" href="${h(s.url)}"><span class="hs-name">${esc(s.name)}</span><span class="hs-by">${esc(s.by)}</span><span class="hs-more">${I.next}en savoir +</span></a></section>`).join('')}
