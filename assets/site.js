@@ -1,7 +1,7 @@
 (async function(){
 'use strict';
 const cfg=window.UDC||{base:'./',kind:'home'},root=cfg.base;
-let db;try{let r=await fetch(root+'assets/catalogue.json');if(!r.ok)throw Error('Données catalogue inaccessibles');db=await r.json()}catch(e){document.getElementById('app').innerHTML='<div style="padding:5rem;font-family:Lato,Arial"><h1>Erreur de chargement</h1><p>Ouvrez le projet avec python -m http.server 8080.</p></div>';console.error(e);return}
+let db;try{let r=await fetch(root+'assets/catalogue.json',{cache:'no-cache'});if(!r.ok)throw Error('Données catalogue inaccessibles');db=await r.json()}catch(e){document.getElementById('app').innerHTML='<div style="padding:5rem;font-family:Lato,Arial"><h1>Erreur de chargement</h1><p>Ouvrez le projet avec python -m http.server 8080.</p></div>';console.error(e);return}
 const C=db.categories,P=db.products,colors=db.colors,h=s=>root+s,esc=t=>String(t??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const money=n=>new Intl.NumberFormat('fr-MA').format(n)+' DH';
 const fallback=p=>h('assets/'+(p?.fallback||'hero-ivoire.webp'));
@@ -9,7 +9,7 @@ const picture=(src,fall='',klass='',alt='Mobilier contemporain')=>`<img class="$
 const local=n=>h('assets/'+n);
 const purl=p=>p.slug.startsWith('demo-')?h('produit/demo/')+'?id='+encodeURIComponent(p.slug):h('produit/'+p.slug+'/');
 let fav=JSON.parse(localStorage.getItem('udc_fav_v3')||'[]');let custom=JSON.parse(localStorage.getItem('udc_products_v3')||'[]');let hidden=JSON.parse(localStorage.getItem('udc_hidden_v3')||'[]');
-function all(){return [...P.filter(p=>!hidden.includes(p.slug)),...custom]}
+function all(){return P}
 const collNames=['Signature','Horizon','Naturae','Atelier'];
 const collOf=p=>collNames[Math.floor(Math.max(0,P.indexOf(p))/6)%4];
 const typeName={canapes:'Canapé',fauteuils:'Fauteuil',tables:'Table',chambres:'Lit',coussins:'Coussin',chaises:'Chaise',rangements:'Rangement',decoration:'Objet de décoration',exterieur:'Mobilier d’extérieur',cuisines:'Cuisine'};
@@ -105,7 +105,7 @@ ${pmenu()}
   </div>
   <a class="dr-cta" href="${h('demander-un-devis/')}" style="--i:13"><span>Demander un devis</span>${arr}</a>
   <div class="dr-social" style="--i:14">${[['ig','Instagram'],['fb','Facebook'],['pi','Pinterest'],['yt','YouTube']].map(([k,n])=>`<a href="#" aria-label="${n}">${I[k]}</a>`).join('')}</div>
-  <div class="dr-legal" style="--i:15"><a href="#">Guide d’entretien</a><a href="#">Conditions de garantie</a><a href="#">Confidentialité</a><a href="#">Mentions légales</a><a href="${h('admin-demo/')}">Administration DEMO</a></div>
+  <div class="dr-legal" style="--i:15"><a href="#">Guide d’entretien</a><a href="#">Conditions de garantie</a><a href="#">Confidentialité</a><a href="#">Mentions légales</a><a href="${h('admin/')}">Administration DEMO</a></div>
  </div>
  <div class="drawer-level sub" data-level="produits"><button class="dr-back" data-back>${back}<span>Retour</span></button><p class="dr-title">Produits</p>${menuCols.flat().map(groupHTML).join('')}<a class="dr-cta" href="${h('catalogue/')}"><span>Voir tous les produits</span>${arr}</a></div>
  <div class="drawer-level sub" data-level="collections"><button class="dr-back" data-back>${back}<span>Retour</span></button><p class="dr-title">Collections</p><div class="mega-group">${collNames.map(n=>`<a href="${h('collections/'+n.toLowerCase()+'/')}">${n}</a>`).join('')}</div><a class="dr-cta" href="${h('collections/')}"><span>Toutes les collections</span>${arr}</a></div>
@@ -115,7 +115,7 @@ ${pmenu()}
 
 /* ---------- Footer ---------- */
 function footer(){
- const cols=[['Services',[['Demander un devis','demander-un-devis/'],['Service conseil en décoration','demander-un-devis/'],['Livraison et installation','contact/'],['Guide d’entretien','#']]],['Professionnels',[['Projets contract','sur-mesure/meubles/'],['Architectes & décorateurs','contact/'],['Administration DEMO','admin-demo/']]],['Marque',[['Notre savoir-faire','fabrication-sur-mesure/'],['Collections','collections/'],['Le Mag','inspirations/'],['Visualisation 3D','visualisation-3d/']]]];
+ const cols=[['Services',[['Demander un devis','demander-un-devis/'],['Service conseil en décoration','demander-un-devis/'],['Livraison et installation','contact/'],['Guide d’entretien','#']]],['Professionnels',[['Projets contract','sur-mesure/meubles/'],['Architectes & décorateurs','contact/'],['Administration','admin/']]],['Marque',[['Notre savoir-faire','fabrication-sur-mesure/'],['Collections','collections/'],['Le Mag','inspirations/'],['Visualisation 3D','visualisation-3d/']]]];
  const lk=u=>u==='#'?'#':h(u);
  return `<footer class="footer" id="footer">
  <div class="ft-news">
@@ -163,6 +163,15 @@ function home(){
  return `<main id="main" class="home">
  <section class="hs hs-event" id="hs-event"><img src="${local('hero-salon-vert.webp')}" alt="Salon contemporain aux tons verts et naturels" class="kb"><div class="hs-center">${eventLogo()}<a class="hs-cta" href="${h('contact/')}">Trouvez votre showroom</a></div><button class="hs-pause" id="hspause" aria-label="Pause">${I.pause}</button></section>
  ${showcase.map(s=>`<section class="hs"><img src="${local(s.img)}" alt="${esc(s.name)}" loading="lazy" class="kb"><a class="hs-cap" href="${h(s.url)}"><span class="hs-name">${esc(s.name)}</span><span class="hs-by">${esc(s.by)}</span><span class="hs-more">${I.next}en savoir +</span></a></section>`).join('')}
+ <section class="ba-sec" aria-label="Avant / Après : terrasse réalisée par Luxor Création">
+  <div class="ba" style="--pos:50%">
+   <img class="ba-after" src="${local('apres-terrasse-2.webp')}" alt="Après : terrasse aménagée par Luxor Création, salon ouvert, cheminée et bassin à cascade" loading="lazy" width="1600" height="900">
+   <img class="ba-before" src="${local('avant-terrasse.webp')}" alt="Avant : la terrasse en chantier" loading="lazy" width="1600" height="900">
+   <span class="ba-line" aria-hidden="true"><span class="ba-knob"><svg viewBox="0 0 24 24"><path d="m9 7-5 5 5 5M15 7l5 5-5 5"/></svg></span></span>
+   <span class="ba-tag ba-tag-l">Avant</span><span class="ba-tag ba-tag-r">Après</span>
+   <input class="ba-range" type="range" min="0" max="100" value="50" step="0.1" aria-label="Comparer avant et après">
+  </div>
+ </section>
  <section class="duo">
   <div class="duo-promo" id="promo">${promos.map((p,i)=>p.replace('class="ps ',`class="ps ${i===0?'active ':''}`)).join('')}
    <button class="sq-arrow p-prev" id="promoprev" aria-label="Précédent">${I.prev}</button><div class="p-dots">${promos.map((_,i)=>`<button data-dot="${i}" class="${i===0?'active':''}" aria-label="Diapositive ${i+1}"></button>`).join('')}</div><button class="sq-arrow p-next" id="promonext" aria-label="Suivant">${I.next}</button>
@@ -359,6 +368,9 @@ function wire(k){const $=s=>document.querySelector(s),$$=s=>[...document.querySe
   $('#addfav')?.addEventListener('click',()=>{$('#addfav').textContent=toggleFav(p.slug)?'♥ Dans les favoris':'♡ Ajouter aux favoris'})}}
  $('#lightclose')?.addEventListener('click',()=>$('#lightbox').classList.remove('open'));
  $('#lightbox')?.addEventListener('click',e=>{if(e.target.id==='lightbox')$('#lightbox').classList.remove('open')});
+
+ /* Avant / Après slider */
+ $$('.ba').forEach(ba=>{const r=ba.querySelector('.ba-range');const set=()=>ba.style.setProperty('--pos',r.value+'%');r.addEventListener('input',set);set()});
 
  /* Forms / admin */
  $('#quoteform')?.addEventListener('submit',e=>{e.preventDefault();$('#quoteout').innerHTML='<div class="info-ribbon">Formulaire DEMO validé localement. Pour envoyer de vraies demandes, il faudra connecter un backend ou un canal de contact.</div>'});
