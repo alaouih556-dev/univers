@@ -67,7 +67,7 @@ function pmenu(){
 /* ---------- Header, mega panel, drawer, search ---------- */
 function nav(){
  const groupHTML=([g,items])=>`<div class="mega-group"><h4>${g}</h4>${items.map(([id,n])=>`<a href="${h('catalogue/'+id+'/')}">${n}</a>`).join('')}</div>`;
- const chev='<i class="chev">›</i>';
+ const arr='<svg class="dr-arr" viewBox="0 0 24 24"><path d="M4 12h15M14 6.5l5.5 5.5-5.5 5.5"/></svg>',back='<svg class="dr-arr" viewBox="0 0 24 24"><path d="M20 12H5M10 6.5 4.5 12l5.5 5.5"/></svg>';
  return `<a class="skip" href="#main">Contenu principal</a>
 <header class="header" id="header">
  <div class="hdr-left">
@@ -77,46 +77,40 @@ function nav(){
  ${logo()}
  <div class="hdr-right">
   <div class="hdr-icons"><a href="${h('favoris/')}" aria-label="Mes favoris">${I.heart}<em class="fav-count" id="favcount">${fav.length||''}</em></a><a href="${h('demander-un-devis/')}" aria-label="Mon espace">${I.user}</a></div>
-  <div class="hdr-links"><button class="hdr-link" id="megaopen" aria-expanded="false" aria-controls="mega">Produits</button><a class="hdr-link" href="${h('contact/')}">Showrooms</a></div>
+  <div class="hdr-links"><a class="hdr-link" href="${h('contact/')}">Showrooms</a></div>
  </div>
 </header>
 ${pmenu()}
 <div class="overlay" id="overlay"></div>
 <aside class="drawer" id="drawer" aria-label="Menu">
  <div class="drawer-level" data-level="main">
-  <div class="dr-block highlights">
-   <a href="${h('collections/signature/')}">Créations Automne-Hiver 2026</a>
-   <a href="${h('collections/horizon/')}">Horizon | Atelier Univers</a>
-   <a href="${h('collections/naturae/')}">Naturae | Matières naturelles</a>
-   <a href="${h('fabrication-sur-mesure/')}">Fabrication sur mesure</a>
-   <a href="${h('catalogue/decoration/')}">La boutique déco</a>
-  </div>
-  <div class="dr-block main">
-   <button data-open="produits">Produits ${chev}</button>
-   <button data-open="collections">Collections ${chev}</button>
-   <a href="${h('contact/')}">Showrooms</a>
+  <a class="dr-feature" href="${h('collections/signature/')}" style="--i:0"><img src="${local('hero-salon-beige.webp')}" alt="" loading="lazy"><span class="dr-feature-txt"><small>À la une</small><b>Créations Automne-Hiver 2026</b><em>Découvrir ${arr}</em></span></a>
+  <p class="dr-label" style="--i:1">Explorer</p>
+  <nav class="dr-main">
+   <button data-open="produits" style="--i:2"><span>Produits</span>${arr}</button>
+   <button data-open="collections" style="--i:3"><span>Collections</span>${arr}</button>
+   <a href="${h('inspirations/')}" style="--i:4"><span>Le Mag</span></a>
+   <a href="${h('fabrication-sur-mesure/')}" style="--i:5"><span>Sur mesure</span></a>
+   <a href="${h('contact/')}" style="--i:6"><span>Showrooms</span></a>
+   <a href="${h('visualisation-3d/')}" style="--i:7"><span>Visualisation 3D</span></a>
+   <button data-open="apropos" style="--i:8"><span>À propos</span>${arr}</button>
+  </nav>
+  <p class="dr-label" style="--i:9">Nos univers</p>
+  <div class="dr-chips" style="--i:10"><a href="${h('collections/horizon/')}">Horizon</a><a href="${h('collections/naturae/')}">Naturae</a><a href="${h('catalogue/cuisines/')}">Cuisines</a><a href="${h('catalogue/decoration/')}">Boutique déco</a><a href="${h('catalogue/')}">Catalogue</a></div>
+  <p class="dr-label" style="--i:11">Service client</p>
+  <div class="dr-list" style="--i:12">
    <a href="${h('demander-un-devis/')}">Service conseil en décoration</a>
-   <a href="${h('catalogue/')}">Catalogue</a>
-   <a href="${h('inspirations/')}">Le Mag</a>
-   <a href="${h('visualisation-3d/')}">Visualisation 3D</a>
-   <button data-open="apropos">À propos d’Univers ${chev}</button>
-  </div>
-  <div class="dr-block">
    <a href="${h('contact/')}">Nous contacter</a>
    <a href="${h('favoris/')}">Mes favoris</a>
-  </div>
-  <div class="dr-block">
-   <a href="${h('demander-un-devis/')}">Demander un devis</a>
    <a href="${h('sur-mesure/meubles/')}">Projets professionnels</a>
-   <a href="${h('admin-demo/')}">Administration DEMO</a>
   </div>
-  <div class="dr-block small">
-   <a href="#">Guide d’entretien</a><a href="#">Conditions de garantie</a><a href="#">Charte de confidentialité</a><a href="#">Mentions légales et conditions d’utilisation du site</a>
-  </div>
+  <a class="dr-cta" href="${h('demander-un-devis/')}" style="--i:13"><span>Demander un devis</span>${arr}</a>
+  <div class="dr-social" style="--i:14">${[['ig','Instagram'],['fb','Facebook'],['pi','Pinterest'],['yt','YouTube']].map(([k,n])=>`<a href="#" aria-label="${n}">${I[k]}</a>`).join('')}</div>
+  <div class="dr-legal" style="--i:15"><a href="#">Guide d’entretien</a><a href="#">Conditions de garantie</a><a href="#">Confidentialité</a><a href="#">Mentions légales</a><a href="${h('admin-demo/')}">Administration DEMO</a></div>
  </div>
- <div class="drawer-level sub" data-level="produits"><button class="dr-back" data-back>‹ Retour</button><p class="dr-title">Produits</p>${menuCols.flat().map(groupHTML).join('')}<a class="mega-all" href="${h('catalogue/')}">Voir tous les produits</a></div>
- <div class="drawer-level sub" data-level="collections"><button class="dr-back" data-back>‹ Retour</button><p class="dr-title">Collections</p><div class="mega-group">${collNames.map(n=>`<a href="${h('collections/'+n.toLowerCase()+'/')}">${n}</a>`).join('')}<a href="${h('collections/')}">Toutes les collections</a></div></div>
- <div class="drawer-level sub" data-level="apropos"><button class="dr-back" data-back>‹ Retour</button><p class="dr-title">À propos d’Univers</p><div class="mega-group"><a href="${h('fabrication-sur-mesure/')}">Notre savoir-faire</a><a href="${h('sur-mesure/canapes/')}">Canapés sur mesure</a><a href="${h('sur-mesure/coussins/')}">Coussins sur mesure</a><a href="${h('sur-mesure/meubles/')}">Meubles sur mesure</a><a href="${h('contact/')}">Le showroom</a></div></div>
+ <div class="drawer-level sub" data-level="produits"><button class="dr-back" data-back>${back}<span>Retour</span></button><p class="dr-title">Produits</p>${menuCols.flat().map(groupHTML).join('')}<a class="dr-cta" href="${h('catalogue/')}"><span>Voir tous les produits</span>${arr}</a></div>
+ <div class="drawer-level sub" data-level="collections"><button class="dr-back" data-back>${back}<span>Retour</span></button><p class="dr-title">Collections</p><div class="mega-group">${collNames.map(n=>`<a href="${h('collections/'+n.toLowerCase()+'/')}">${n}</a>`).join('')}</div><a class="dr-cta" href="${h('collections/')}"><span>Toutes les collections</span>${arr}</a></div>
+ <div class="drawer-level sub" data-level="apropos"><button class="dr-back" data-back>${back}<span>Retour</span></button><p class="dr-title">À propos</p><div class="mega-group"><a href="${h('fabrication-sur-mesure/')}">Notre savoir-faire</a><a href="${h('sur-mesure/canapes/')}">Canapés sur mesure</a><a href="${h('sur-mesure/coussins/')}">Coussins sur mesure</a><a href="${h('sur-mesure/meubles/')}">Meubles sur mesure</a><a href="${h('contact/')}">Le showroom</a></div></div>
 </aside>
 <div class="search-panel" id="searchmodal" role="dialog" aria-label="Recherche"><div class="search-inner"><div class="search-row">${I.search}<input placeholder="Que recherchez-vous ?" id="globalsearch" autocomplete="off"><button class="hdr-btn" id="searchclose" aria-label="Fermer">${I.close}</button></div><p class="search-hint">Les suggestions s’adaptent à votre recherche.</p><div id="searchresults" class="search-results"></div></div></div>`}
 
@@ -272,15 +266,15 @@ function wire(k){const $=s=>document.querySelector(s),$$=s=>[...document.querySe
   body.classList.toggle('menu-open',state.drawer);
   body.classList.toggle('locked',state.drawer||state.search||state.mega);
   $('#openmenu').setAttribute('aria-expanded',state.drawer);
-  $('#megaopen').setAttribute('aria-expanded',state.mega);
-  $('#megaopen').classList.toggle('active',state.mega);
+  $('#megaopen')?.setAttribute('aria-expanded',state.mega);
+  $('#megaopen')?.classList.toggle('active',state.mega);
   if(!state.drawer)setTimeout(()=>showLevel('main'),300);
   if(state.search)setTimeout(()=>$('#globalsearch').focus(),50);
  }
  function showLevel(l){$$('.drawer-level').forEach(d=>d.classList.toggle('active',d.dataset.level===l));$('#drawer').scrollTop=0}
  showLevel('main');
  $('#openmenu').addEventListener('click',()=>setPanel('drawer',!state.drawer));
- $('#megaopen').addEventListener('click',()=>setPanel('mega',!state.mega));
+ $('#megaopen')?.addEventListener('click',()=>setPanel('mega',!state.mega));
  $$('[data-pmclose]').forEach(b=>b.addEventListener('click',()=>setPanel(null)));
  /* Products panel: level navigation with staggered line animation */
  let pmLevel='produits',pmBusy=false;
