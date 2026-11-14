@@ -1,4 +1,4 @@
-# Luxor Design Creation — Nouvelle Maison
+# Luxor Creation — Nouvelle Maison
 
 **Projet neuf**, sans reprise du HTML/CSS des anciennes versions. Frontend statique uniquement, inspiré des codes de navigation des catalogues de mobilier de luxe. Les photos d'ambiance du site ont été générées pour ce prototype et intégrées localement. Les fiches produits utilisent aussi des URL Unsplash à titre illustratif, avec image de remplacement locale si la connexion échoue.
 
