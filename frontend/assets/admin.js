@@ -5,7 +5,7 @@ const app = document.getElementById('admin');
 const A = '../assets/';
 const esc = t => String(t ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const money = n => new Intl.NumberFormat('fr-MA').format(n) + ' DH';
-const img = p => p._preview || p.image || A + ((p.gallery && p.gallery[0]) || p.fallback || 'hero-ivoire.webp');
+const img = p => { const n = p._preview || p.image || (p.gallery && p.gallery[0]) || p.fallback || 'hero-ivoire.webp'; return /^(https?:|data:)/.test(n) ? n : A + n; };
 const ICON = {
   plus: '<path d="M12 5v14M5 12h14"/>', edit: '<path d="M4 20h4L19 9l-4-4L4 16v4Z"/><path d="m13.5 6.5 4 4"/>',
   trash: '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>', eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/>',
@@ -14,16 +14,130 @@ const ICON = {
 };
 const ico = n => `<svg viewBox="0 0 24 24" aria-hidden="true">${ICON[n]}</svg>`;
 
-let state = { email: '', products: [], categories: [], colors: [], q: '', cat: '', live: false };
-const liveNote = () => state.live ? ' En ligne sur le site dans environ 1 minute.' : '';
+let state = { email: '', products: [], categories: [], colors: [], q: '', cat: '' };
+const liveNote = () => '';
 
-async function call(method, url, body) {
-  const r = await fetch(url, { method, credentials: 'same-origin', headers: body ? { 'Content-Type': 'application/json' } : {}, body: body ? JSON.stringify(body) : undefined });
-  let data = {}; try { data = await r.json(); } catch {}
-  if (r.status === 401 && !url.endsWith('/login')) { showLogin(url.endsWith('/me') ? '' : 'Votre session a expiré. Veuillez vous reconnecter.'); throw new Error('auth'); }
-  if (!r.ok) throw new Error(data.error || 'Erreur ' + r.status);
-  return data;
+/* ---------------- Supabase (auth + database + photo storage) ----------------
+ * The URL and the publishable key are public by design; what an account may do is enforced
+ * by the database security rules (backend/supabase/schema.sql): only users listed in `admins` can write. */
+const SB = { url: 'https://oknbuexbsukrzycwiies.supabase.co', key: 'sb_publishable_JA1AK7R3FiYQ9MLzWXf22g_yPY3PN7T', bucket: 'products' };
+const SESSION_KEY = 'luxor_admin_session';
+const photoBase = `${SB.url}/storage/v1/object/public/${SB.bucket}/`;
+let session = null;
+try { session = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null'); } catch {}
+const saveSession = s => { session = s; if (s) localStorage.setItem(SESSION_KEY, JSON.stringify(s)); else localStorage.removeItem(SESSION_KEY); };
+
+async function authRequest(grant, body) {
+  const r = await fetch(`${SB.url}/auth/v1/token?grant_type=${grant}`, { method: 'POST', headers: { apikey: SB.key, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) {
+    const m = d.error_description || d.msg || d.message || '';
+    if (/invalid login credentials/i.test(m)) throw new Error('Email ou mot de passe incorrect.');
+    if (/email not confirmed/i.test(m)) throw new Error('Ce compte n’est pas encore confirmé.');
+    if (r.status === 429) throw new Error('Trop de tentatives. Réessayez dans quelques minutes.');
+    throw new Error(m || 'Connexion impossible (' + r.status + ').');
+  }
+  return { access_token: d.access_token, refresh_token: d.refresh_token, expires_at: Math.floor(Date.now() / 1000) + (d.expires_in || 3600), email: d.user?.email, user_id: d.user?.id };
 }
+async function token() {
+  if (!session) throw authError();
+  if (session.expires_at - 60 < Date.now() / 1000) {
+    try { saveSession(await authRequest('refresh_token', { refresh_token: session.refresh_token })); }
+    catch { saveSession(null); throw authError(); }
+  }
+  return session.access_token;
+}
+function authError() { showLogin(session ? 'Votre session a expiré. Veuillez vous reconnecter.' : ''); return new Error('auth'); }
+
+async function sb(path, { method = 'GET', body, headers = {}, raw = false } = {}) {
+  const r = await fetch(SB.url + path, { method, headers: { apikey: SB.key, Authorization: 'Bearer ' + await token(), ...(body && !raw ? { 'Content-Type': 'application/json' } : {}), ...headers }, body: raw ? body : body ? JSON.stringify(body) : undefined });
+  if (r.status === 401) { saveSession(null); throw authError(); }
+  const text = await r.text(); let d = null; try { d = text ? JSON.parse(text) : null; } catch {}
+  if (!r.ok) {
+    const m = d?.message || d?.error || '';
+    if (d?.code === '23505') { const e = new Error('duplicate'); e.duplicate = true; throw e; }
+    if (d?.code === '42501' || r.status === 403 || /row-level security/i.test(m)) throw new Error('Action non autorisée pour ce compte.');
+    throw new Error(m || 'Erreur ' + r.status);
+  }
+  return d;
+}
+const fromRow = ({ is_new, ...p }) => ({ ...p, new: is_new });
+const slugify = s => String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
+function toRow(b) {
+  const r = {};
+  for (const k of ['name', 'category', 'description', 'material', 'dimensions', 'color']) if (k in b) r[k] = String(b[k] ?? '').trim();
+  if ('price' in b) r.price = Math.round(Number(b.price));
+  if ('new' in b) r.is_new = !!b.new;
+  if ('featured' in b) r.featured = !!b.featured;
+  return r;
+}
+async function uploadPhoto(dataUrl, slug) {
+  const blob = await (await fetch(dataUrl)).blob();
+  const ext = blob.type === 'image/png' ? 'png' : blob.type === 'image/jpeg' ? 'jpg' : 'webp';
+  const name = `${slug}-${Math.random().toString(36).slice(2, 10)}.${ext}`;
+  await sb(`/storage/v1/object/${SB.bucket}/${name}`, { method: 'POST', body: blob, raw: true, headers: { 'Content-Type': blob.type, 'x-upsert': 'false' } });
+  return photoBase + name;
+}
+async function deletePhotos(p) {
+  const names = [...new Set([p.fallback, ...(p.gallery || [])])].filter(u => typeof u === 'string' && u.startsWith(photoBase)).map(u => u.slice(photoBase.length));
+  if (names.length) await sb(`/storage/v1/object/${SB.bucket}`, { method: 'DELETE', body: { prefixes: names } }).catch(() => {});
+}
+
+const api = {
+  async login(email, password) {
+    const s = await authRequest('password', { email: String(email).trim(), password });
+    saveSession(s);
+    const rows = await sb(`/rest/v1/admins?select=email&user_id=eq.${s.user_id}`);
+    if (!rows?.length) { await api.logout(); throw new Error('Ce compte n’a pas accès à l’administration.'); }
+    return { email: s.email };
+  },
+  async me() {
+    if (!session) throw authError();
+    await token();
+    return { email: session.email };
+  },
+  async logout() {
+    if (session) await fetch(`${SB.url}/auth/v1/logout`, { method: 'POST', headers: { apikey: SB.key, Authorization: 'Bearer ' + session.access_token } }).catch(() => {});
+    saveSession(null);
+  },
+  async list() {
+    const [products, categories, colors] = await Promise.all([
+      sb('/rest/v1/products?select=*&order=sort,id'), sb('/rest/v1/categories?select=id,name,description&order=sort'), sb('/rest/v1/colors?select=name,hex&order=sort')]);
+    return { products: products.map(fromRow), categories, colors };
+  },
+  async create(b) {
+    const row = toRow(b);
+    if (!row.name) throw new Error('Le nom est obligatoire.');
+    row.sort = Math.max(0, ...state.products.map(p => p.sort || 0)) + 1;
+    const base = `${row.category}-${slugify(row.name) || 'produit'}`;
+    let slug = base, i = 2;
+    while (state.products.some(p => p.slug === slug)) slug = `${base}-${i++}`;
+    if (b.photo) { const url = await uploadPhoto(b.photo, slug); row.fallback = url; row.gallery = [url]; }
+    else row.fallback = state.products.find(p => p.category === row.category)?.fallback || 'hero-ivoire.webp';
+    for (let n = 0; n < 5; n++) {
+      try {
+        const [p] = await sb('/rest/v1/products', { method: 'POST', body: { ...row, slug }, headers: { Prefer: 'return=representation' } });
+        const [withSku] = await sb(`/rest/v1/products?id=eq.${p.id}`, { method: 'PATCH', body: { sku: 'LUX-' + String(p.id).padStart(4, '0') }, headers: { Prefer: 'return=representation' } });
+        return { product: fromRow(withSku || p) };
+      } catch (e) { if (!e.duplicate) throw e; slug = `${base}-${i++}`; }
+    }
+    throw new Error('Impossible de créer le produit, réessayez.');
+  },
+  async update(p, b) {
+    const row = toRow(b);
+    let old = null;
+    if (b.photo) { const url = await uploadPhoto(b.photo, p.slug); row.image = ''; row.fallback = url; row.gallery = [url]; old = { ...p }; }
+    const rows = await sb(`/rest/v1/products?slug=eq.${encodeURIComponent(p.slug)}`, { method: 'PATCH', body: row, headers: { Prefer: 'return=representation' } });
+    if (!rows?.length) throw new Error('Produit introuvable ou action non autorisée.');
+    if (old) await deletePhotos(old);
+    return { product: fromRow(rows[0]) };
+  },
+  async remove(p) {
+    const rows = await sb(`/rest/v1/products?slug=eq.${encodeURIComponent(p.slug)}`, { method: 'DELETE', headers: { Prefer: 'return=representation' } });
+    if (!rows?.length) throw new Error('Produit introuvable ou action non autorisée.');
+    await deletePhotos(p);
+  }
+};
 
 function toast(msg, kind = 'ok') {
   let box = document.querySelector('.toasts');
@@ -56,15 +170,15 @@ function showLogin(msg = '') {
     const err = document.getElementById('loginerr'), btn = f.querySelector('[type=submit]');
     if (!f.email.value || !f.password.value) { err.textContent = 'Veuillez saisir votre email et votre mot de passe.'; return; }
     btn.disabled = true; btn.textContent = 'Connexion…'; err.textContent = '';
-    try { const d = await call('POST', '/api/admin/login', { email: f.email.value, password: f.password.value }); state.email = d.email; await loadDashboard(); }
+    try { const d = await api.login(f.email.value, f.password.value); state.email = d.email; await loadDashboard(); }
     catch (x) { err.textContent = x.message; btn.disabled = false; btn.textContent = 'Se connecter'; f.password.select(); }
   };
 }
 
 /* ---------------- dashboard ---------------- */
 async function loadDashboard() {
-  const d = await call('GET', '/api/admin/products');
-  Object.assign(state, { products: d.products, categories: d.categories, colors: d.colors || [], live: !!d.live });
+  const d = await api.list();
+  Object.assign(state, { products: d.products, categories: d.categories, colors: d.colors || [] });
   renderDashboard();
 }
 const catName = id => state.categories.find(c => c.id === id)?.name || id;
@@ -92,7 +206,7 @@ function renderDashboard() {
       </table><p class="empty hidden" id="empty">Aucun produit ne correspond à votre recherche.</p></div>
     </main>
     <div class="modal" id="modal" hidden></div>`;
-  document.getElementById('logout').onclick = async () => { try { await call('POST', '/api/admin/logout', {}); } catch {} state.email = ''; showLogin(); };
+  document.getElementById('logout').onclick = async () => { try { await api.logout(); } catch {} state.email = ''; showLogin(); };
   document.getElementById('addbtn').onclick = () => openEditor(null);
   document.getElementById('q').oninput = e => { state.q = e.target.value; renderRows(); };
   document.getElementById('catf').onchange = e => { state.cat = e.target.value; renderRows(); };
@@ -125,7 +239,7 @@ function renderRows() {
     inp.oninput = () => f.classList.toggle('dirty', +inp.value !== +p.price);
     f.onsubmit = async e => {
       e.preventDefault(); if (+inp.value === +p.price) return;
-      try { const d = await call('PUT', '/api/admin/products/' + p.slug, { price: inp.value }); Object.assign(p, d.product); f.classList.remove('dirty'); renderStats(); toast(`Prix de « ${p.name} » : ${money(p.price)}.` + liveNote()); }
+      try { const d = await api.update(p, { price: inp.value }); Object.assign(p, d.product); f.classList.remove('dirty'); renderStats(); toast(`Prix de « ${p.name} » : ${money(p.price)}.` + liveNote()); }
       catch (x) { if (x.message !== 'auth') toast(x.message, 'err'); }
     };
     tr.querySelector('[data-edit]').onclick = () => openEditor(p);
@@ -206,7 +320,7 @@ function openEditor(p) {
     if (photo) body.photo = photo;
     btn.disabled = true; btn.textContent = 'Enregistrement…'; err.textContent = '';
     try {
-      const d = isNew ? await call('POST', '/api/admin/products', body) : await call('PUT', '/api/admin/products/' + p.slug, body);
+      const d = isNew ? await api.create(body) : await api.update(p, body);
       if (photo) d.product._preview = photo;
       if (isNew) state.products.push(d.product); else Object.assign(p, d.product);
       closeModal(); renderRows(); toast((isNew ? `« ${d.product.name} » a été ajouté au catalogue.` : `« ${d.product.name} » a été mis à jour.`) + liveNote());
@@ -225,18 +339,17 @@ function confirmDelete(p) {
   const b = m.querySelector('#dodel'); b.focus();
   b.onclick = async () => {
     b.disabled = true;
-    try { await call('DELETE', '/api/admin/products/' + p.slug, {}); state.products = state.products.filter(x => x !== p); closeModal(); renderRows(); toast(`« ${p.name} » a été supprimé.` + liveNote()); }
+    try { await api.remove(p); state.products = state.products.filter(x => x !== p); closeModal(); renderRows(); toast(`« ${p.name} » a été supprimé.` + liveNote()); }
     catch (x) { b.disabled = false; if (x.message !== 'auth') toast(x.message, 'err'); }
   };
 }
 
 /* ---------------- start ---------------- */
 (async () => {
-  try { const d = await call('GET', '/api/admin/me'); state.email = d.email; await loadDashboard(); }
+  try { const d = await api.me(); state.email = d.email; await loadDashboard(); }
   catch (x) {
     if (x.message === 'auth') return;
-    const noApi = /^Erreur (404|405)$/.test(x.message) || x instanceof TypeError;
-    app.innerHTML = `<main class="login"><div class="login-card">${logo}<h1>${noApi ? 'Serveur requis' : 'Administration indisponible'}</h1><p class="login-sub">${noApi ? 'L’API d’administration est introuvable. En local, lancez <code>node server.js</code> puis ouvrez <code>http://localhost:8080/admin/</code>. En ligne, vérifiez que le dossier <code>api/</code> et <code>vercel.json</code> ont bien été déployés.' : esc(x.message)}</p><a class="back" href="../">← Retour au site</a></div></main>`;
+    app.innerHTML = `<main class="login"><div class="login-card">${logo}<h1>Administration indisponible</h1><p class="login-sub">${esc(x.message)}</p><a class="back" href="../">← Retour au site</a></div></main>`;
   }
 })();
 })();

@@ -27,30 +27,15 @@ Si le port 8080 est déjà utilisé, choisir `8090` et ouvrir `http://localhost:
 
 La présentation est originale et **n'est pas une copie 100 % du site Roche Bobois**. Le catalogue et les images sont fictifs / illustratifs, destinés à être remplacés avec le catalogue autorisé ou les photos de l'entreprise. Les vues de détail sont des illustrations d'ambiance et ne doivent pas être présentées comme différentes photographies authentiques d'un même modèle. L'interface d'administration n'est pas sécurisée et ne convient pas à la production. Les prix et dimensions sont des données de démonstration. Les images locales continuent de fonctionner hors ligne ; pour les images secondaires Unsplash, une connexion internet améliore la diversité.
 
-## Administration (`/admin/`)
+## Administration (`/admin/`) — Supabase
 
-Ajouter / supprimer des produits, modifier prix, description, photo… Le mot de passe n'est jamais dans le code du navigateur.
+Produits, catégories, couleurs et photos sont stockés dans **Supabase** (projet `oknbuexbsukrzycwiies`). Le site lit le catalogue en direct : une modification faite dans `/admin/` est visible immédiatement, sans redéploiement ni variable Vercel.
 
-### En ligne (Vercel)
-
-L'API est la fonction serverless `api/admin.js`. Chaque modification devient un **commit GitHub**, puis Vercel redéploie le site (≈ 1 min).
-
-Variables à créer dans Vercel → Settings → Environment Variables (puis *Redeploy*) :
-
-| Variable | Valeur |
-|---|---|
-| `ADMIN_EMAIL` | email de connexion |
-| `ADMIN_PASSWORD_HASH` | obtenu avec `node backend/server.js --hash "<mot de passe>"` |
-| `SESSION_SECRET` | donné par la même commande |
-| `GITHUB_TOKEN` | jeton GitHub *fine-grained*, dépôt du site uniquement, permission **Contents : Read and write** |
-| `GITHUB_REPO` | `propriétaire/dépôt` |
-| `GITHUB_BRANCH` | facultatif (`main` par défaut) |
-
-### En local
-
-`node backend/server.js` → `http://localhost:8080/admin/`. Identifiants locaux : `node backend/server.js --set-admin <email> <mot de passe>` (fichier `backend/.admin.json`, haché, jamais commité ni déployé). Les modifications sont écrites directement dans `frontend/` (sauvegardes dans `backend/.backups/`).
-
-Protection : session signée HttpOnly de 8 h, blocage après 5 mots de passe erronés, requêtes d'autres sites refusées.
+- Connexion : comptes **Supabase Auth** listés dans la table `admins` (aujourd'hui `adminluxor@gmail.com`). Changer le mot de passe : Supabase → Authentication → Users.
+- Ajouter un administrateur : créer l'utilisateur dans Authentication, puis `insert into public.admins(user_id,email) select id,email from auth.users where email='…';`
+- Sécurité : règles RLS (lecture publique, écriture réservée aux admins), photos dans le bucket `products` (5 Mo max).
+- `frontend/` contient l'URL et la clé *publishable* Supabase : elles sont publiques par conception. Les clés secrètes restent dans `.env` (jamais commité ni déployé).
+- `backend/supabase/schema.sql` crée tables et règles ; `seed.sql` importe `frontend/assets/catalogue.json` (secours si Supabase est indisponible).
 
 ## Structure
 
@@ -62,12 +47,10 @@ frontend/              le site (seul dossier publié par Vercel, voir vercel.jso
   assets/admin.*       interface d'administration
   assets/catalogue.json données du catalogue · assets/*.webp visuels
 backend/
-  server.js            serveur local : site + API admin
-  lib/core.js          API admin (connexion, produits)
-  lib/fs-store.js      enregistrement sur le disque (local)
-  lib/github-store.js  enregistrement par commit GitHub (en ligne)
-api/admin.js           point d'entrée Vercel (doit rester dans /api), utilise backend/lib
-vercel.json            publie frontend/ et route /api/admin/*
+  server.js            serveur local d'aperçu (node backend/server.js)
+  supabase/schema.sql  tables, règles de sécurité, stockage photos
+  supabase/seed.sql    import du catalogue
+vercel.json            publie frontend/ ; /produit/<slug>/ inconnu → frontend/produit/index.html
 ```
 
 Pour seulement afficher le site : `python -m http.server 8080 --directory frontend`.

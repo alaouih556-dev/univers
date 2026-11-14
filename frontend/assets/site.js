@@ -1,12 +1,20 @@
 (async function(){
 'use strict';
 const cfg=window.UDC||{base:'./',kind:'home'},root=cfg.base;
-let db;try{let r=await fetch(root+'assets/catalogue.json',{cache:'no-cache'});if(!r.ok)throw Error('Données catalogue inaccessibles');db=await r.json()}catch(e){document.getElementById('app').innerHTML='<div style="padding:5rem;font-family:Lato,Arial"><h1>Erreur de chargement</h1><p>Ouvrez le projet avec python -m http.server 8080.</p></div>';console.error(e);return}
+/* Catalogue: live from Supabase (public read-only key), local catalogue.json as a fallback */
+const SB={url:'https://oknbuexbsukrzycwiies.supabase.co',key:'sb_publishable_JA1AK7R3FiYQ9MLzWXf22g_yPY3PN7T'};
+async function loadDb(){
+ const get=t=>fetch(SB.url+'/rest/v1/'+t,{headers:{apikey:SB.key},cache:'no-cache'}).then(r=>{if(!r.ok)throw Error(t+' '+r.status);return r.json()});
+ const [categories,colors,rows]=await Promise.all([get('categories?select=id,name,description&order=sort'),get('colors?select=name,hex&order=sort'),get('products?select=*&order=sort,id')]);
+ return {categories,colors,products:rows.map(({is_new,...p})=>({...p,new:is_new}))};
+}
+let db;try{db=await loadDb()}catch(e){console.warn('Supabase indisponible, catalogue local utilisé',e);try{let r=await fetch(root+'assets/catalogue.json',{cache:'no-cache'});if(!r.ok)throw Error('Données catalogue inaccessibles');db=await r.json()}catch(e2){document.getElementById('app').innerHTML='<div style="padding:5rem;font-family:Lato,Arial"><h1>Erreur de chargement</h1><p>Le catalogue est momentanément indisponible. Veuillez réessayer.</p></div>';console.error(e2);return}}
 const C=db.categories,P=db.products,colors=db.colors,h=s=>root+s,esc=t=>String(t??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const money=n=>new Intl.NumberFormat('fr-MA').format(n)+' DH';
-const fallback=p=>h('assets/'+(p?.fallback||'hero-ivoire.webp'));
+const isUrl=n=>/^https?:\/\//.test(n||'');
+const fallback=p=>isUrl(p?.fallback)?p.fallback:h('assets/'+(p?.fallback||'hero-ivoire.webp'));
 const picture=(src,fall='',klass='',alt='Mobilier contemporain')=>`<img class="${klass}" src="${esc(src)}" alt="${esc(alt)}" loading="lazy" onerror="this.onerror=null;this.src='${esc(fall||h('assets/hero-ivoire.webp'))}'">`;
-const local=n=>h('assets/'+n);
+const local=n=>isUrl(n)?n:h('assets/'+n);
 const purl=p=>p.slug.startsWith('demo-')?h('produit/demo/')+'?id='+encodeURIComponent(p.slug):h('produit/'+p.slug+'/');
 let fav=JSON.parse(localStorage.getItem('udc_fav_v3')||'[]');let custom=JSON.parse(localStorage.getItem('udc_products_v3')||'[]');let hidden=JSON.parse(localStorage.getItem('udc_hidden_v3')||'[]');
 function all(){return P}

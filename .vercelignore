@@ -1,5 +1,5 @@
 # never upload these to Vercel
-backend/.admin.json
-backend/.backups
-**/.backups
+.env
+.env.*
+backend/
 *.tmp
