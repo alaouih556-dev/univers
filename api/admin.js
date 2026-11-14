@@ -9,9 +9,11 @@
  *   GITHUB_TOKEN         fine-grained token with "Contents: Read and write" on the repo
  *   GITHUB_REPO          owner/repo, e.g. alaouih556-dev/Luxor
  *   GITHUB_BRANCH        optional, default "main"
+ *   SITE_DIR             optional, folder of the website in the repo, default "frontend"
  */
-const { createAdminApi, loadCredentials } = require('./_lib/core');
-const { githubStore } = require('./_lib/github-store');
+// The code lives in backend/lib; Vercel requires the function entry point to be in /api.
+const { createAdminApi, loadCredentials } = require('../backend/lib/core');
+const { githubStore } = require('../backend/lib/github-store');
 
 let api;
 function getApi() {
@@ -19,12 +21,13 @@ function getApi() {
   const env = process.env;
   const missing = ['ADMIN_EMAIL', 'ADMIN_PASSWORD_HASH', 'SESSION_SECRET', 'GITHUB_TOKEN', 'GITHUB_REPO'].filter(k => !env[k]);
   const cred = loadCredentials(env, null);
+  const siteDir = String(env.SITE_DIR ?? 'frontend').replace(/^\/+|\/+$/g, '');
   let configError = null;
   if (missing.length) configError = `Administration non configurée : variable(s) Vercel manquante(s) : ${missing.join(', ')}.`;
   else if (!cred) configError = 'ADMIN_PASSWORD_HASH invalide (format attendu « sel:hash »).';
   else if (env.SESSION_SECRET.length < 32) configError = 'SESSION_SECRET trop court (32 caractères minimum).';
   api = createAdminApi({
-    store: configError ? null : githubStore({ token: env.GITHUB_TOKEN, repo: env.GITHUB_REPO, branch: env.GITHUB_BRANCH || 'main', apiBase: env.GITHUB_API_URL || undefined }),
+    store: configError ? null : githubStore({ token: env.GITHUB_TOKEN, repo: env.GITHUB_REPO, branch: env.GITHUB_BRANCH || 'main', apiBase: env.GITHUB_API_URL || undefined, prefix: siteDir ? siteDir + '/' : '' }),
     cred, secret: env.SESSION_SECRET, configError
   });
   return api;

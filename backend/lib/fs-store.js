@@ -1,12 +1,12 @@
 'use strict';
-/* Catalogue storage on the local disk (used by `node server.js`). Keeps the last 30 backups in .backups/. */
+/* Catalogue storage on the local disk (used by backend/server.js). root = the frontend folder; keeps the last 30 backups in backupDir. */
 const fs = require('fs');
 const fsp = fs.promises;
 const path = require('path');
 
-function fsStore(root) {
+function fsStore(root, backupDir = path.join(root, '.backups')) {
   const CATALOGUE = path.join(root, 'assets', 'catalogue.json');
-  const BACKUPS = path.join(root, '.backups');
+  const BACKUPS = backupDir;
   const inside = p => { const f = path.normalize(path.join(root, p)); if (!f.startsWith(root + path.sep)) throw new Error('bad path'); return f; };
   let queue = Promise.resolve();
 

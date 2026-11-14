@@ -1,7 +1,8 @@
 'use strict';
 /* Catalogue storage in the GitHub repo: every admin change is one commit; Vercel redeploys the site automatically. */
 
-function githubStore({ token, repo, branch = 'main', apiBase = 'https://api.github.com' }) {
+/* prefix: folder of the website inside the repo ("frontend/") — paths given to this store are relative to it. */
+function githubStore({ token, repo, branch = 'main', apiBase = 'https://api.github.com', prefix = '' }) {
   const API = `${apiBase}/repos/${repo}`;
   async function gh(path, opts = {}) {
     const r = await fetch(API + path, {
@@ -18,7 +19,8 @@ function githubStore({ token, repo, branch = 'main', apiBase = 'https://api.gith
     }
     return r;
   }
-  const enc = p => p.split('/').map(encodeURIComponent).join('/');
+  const full = p => prefix + p;
+  const enc = p => full(p).split('/').map(encodeURIComponent).join('/');
 
   async function head() {
     return (await (await gh(`/git/ref/heads/${encodeURIComponent(branch)}`)).json()).object.sha;
@@ -36,7 +38,7 @@ function githubStore({ token, repo, branch = 'main', apiBase = 'https://api.gith
   async function read() {
     const version = await head();
     const text = await readText('assets/catalogue.json', version);
-    if (text == null) throw new Error('assets/catalogue.json introuvable dans le dépôt');
+    if (text == null) throw new Error(full('assets/catalogue.json') + ' introuvable dans le dépôt');
     return { db: JSON.parse(text), version };
   }
   async function blob(content) {
@@ -48,8 +50,8 @@ function githubStore({ token, repo, branch = 'main', apiBase = 'https://api.gith
     const baseTree = (await (await gh(`/git/commits/${version}`)).json()).tree.sha;
     const entries = [];
     const all = { ...files, 'assets/catalogue.json': JSON.stringify(db) };
-    for (const [path, content] of Object.entries(all)) entries.push({ path, mode: '100644', type: 'blob', sha: await blob(content) });
-    for (const path of deletes) entries.push({ path, mode: '100644', type: 'blob', sha: null });
+    for (const [path, content] of Object.entries(all)) entries.push({ path: full(path), mode: '100644', type: 'blob', sha: await blob(content) });
+    for (const path of deletes) entries.push({ path: full(path), mode: '100644', type: 'blob', sha: null });
     const tree = (await (await gh('/git/trees', { method: 'POST', body: JSON.stringify({ base_tree: baseTree, tree: entries }) })).json()).sha;
     const c = (await (await gh('/git/commits', { method: 'POST', body: JSON.stringify({ message, tree, parents: [version] }) })).json()).sha;
     try {

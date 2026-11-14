@@ -3,12 +3,15 @@
  * Luxor Création — local server: the site + the /admin API (Node.js 18+, no dependencies).
  * Online (Vercel) the same API runs as the serverless function api/admin.js.
  *
- *   node server.js                                   → http://localhost:8080  (admin: /admin/)
- *   PORT=8090 node server.js                         → other port
- *   node server.js --set-admin <email> <password>    → local login, saved hashed in .admin.json (not committed)
- *   node server.js --hash <password>                 → prints the ADMIN_PASSWORD_HASH value for Vercel
+ * Run from the project root:
+ *   node backend/server.js                                   → http://localhost:8080  (admin: /admin/)
+ *   PORT=8090 node backend/server.js                         → other port
+ *   node backend/server.js --set-admin <email> <password>    → local login, saved hashed in backend/.admin.json (not committed)
+ *   node backend/server.js --hash <password>                 → prints the ADMIN_PASSWORD_HASH value for Vercel
  *
- * Locally, changes are written to the files on disk (assets/catalogue.json …).
+ * Serves the website from ../frontend.
+ *
+ * Locally, changes are written to the files on disk (frontend/assets/catalogue.json …), backups in backend/.backups/.
  * If GITHUB_TOKEN and GITHUB_REPO are set, changes are committed to GitHub instead (like online).
  */
 'use strict';
@@ -17,25 +20,25 @@ const fs = require('fs');
 const fsp = fs.promises;
 const path = require('path');
 const crypto = require('crypto');
-const { createAdminApi, loadCredentials, hashPassword } = require('./api/_lib/core');
-const { fsStore } = require('./api/_lib/fs-store');
-const { githubStore } = require('./api/_lib/github-store');
+const { createAdminApi, loadCredentials, hashPassword } = require('./lib/core');
+const { fsStore } = require('./lib/fs-store');
+const { githubStore } = require('./lib/github-store');
 
-const ROOT = __dirname;
+const ROOT = path.join(__dirname, '..', 'frontend'); // the website
 const PORT = +process.env.PORT || 8080;
-const CRED_FILE = path.join(ROOT, '.admin.json');
+const CRED_FILE = path.join(__dirname, '.admin.json');
 
 /* ---------- CLI ---------- */
 if (process.argv[2] === '--set-admin') {
   const [email, pw] = process.argv.slice(3);
-  if (!email || !pw) { console.error('Usage : node server.js --set-admin <email> <mot de passe>'); process.exit(1); }
+  if (!email || !pw) { console.error('Usage : node backend/server.js --set-admin <email> <mot de passe>'); process.exit(1); }
   fs.writeFileSync(CRED_FILE, JSON.stringify({ email: email.trim().toLowerCase(), ...hashPassword(pw) }, null, 2) + '\n');
   console.log('Identifiants administrateur locaux mis à jour pour', email);
   process.exit(0);
 }
 if (process.argv[2] === '--hash') {
   const pw = process.argv[3];
-  if (!pw) { console.error('Usage : node server.js --hash <mot de passe>'); process.exit(1); }
+  if (!pw) { console.error('Usage : node backend/server.js --hash <mot de passe>'); process.exit(1); }
   const { salt, hash } = hashPassword(pw);
   console.log(`ADMIN_PASSWORD_HASH=${salt}:${hash}`);
   console.log(`SESSION_SECRET=${crypto.randomBytes(32).toString('hex')}`);
@@ -46,9 +49,9 @@ if (process.argv[2] === '--hash') {
 let fileCred = null;
 try { fileCred = JSON.parse(fs.readFileSync(CRED_FILE, 'utf8')); } catch {}
 const cred = loadCredentials(process.env, fileCred);
-if (!cred) { console.error('Aucun identifiant admin. Lancez : node server.js --set-admin <email> <mot de passe>'); process.exit(1); }
+if (!cred) { console.error('Aucun identifiant admin. Lancez : node backend/server.js --set-admin <email> <mot de passe>'); process.exit(1); }
 const useGithub = process.env.GITHUB_TOKEN && process.env.GITHUB_REPO;
-const store = useGithub ? githubStore({ token: process.env.GITHUB_TOKEN, repo: process.env.GITHUB_REPO, branch: process.env.GITHUB_BRANCH || 'main' }) : fsStore(ROOT);
+const store = useGithub ? githubStore({ token: process.env.GITHUB_TOKEN, repo: process.env.GITHUB_REPO, branch: process.env.GITHUB_BRANCH || 'main', prefix: 'frontend/' }) : fsStore(ROOT, path.join(__dirname, '.backups'));
 const secret = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
 const adminApi = createAdminApi({ store, cred, secret });
 
@@ -63,8 +66,8 @@ async function serveStatic(req, res, url) {
   const file = path.normalize(path.join(ROOT, rel));
   if (!file.startsWith(ROOT + path.sep) && file !== ROOT) return send(res, 403, 'Forbidden');
   const parts = path.relative(ROOT, file).split(path.sep);
-  // never expose dotfiles (.admin.json, .git, .backups), server code or the README
-  if (parts.some(s => s.startsWith('.')) || ['server.js', 'api', 'node_modules', 'package.json', 'README.md', 'vercel.json'].includes(parts[0])) return send(res, 404, 'Not found');
+  // only the frontend folder is served; never expose dotfiles
+  if (parts.some(s => s.startsWith('.'))) return send(res, 404, 'Not found');
   let target = file;
   try {
     let st = await fsp.stat(target);

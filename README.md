@@ -5,7 +5,7 @@
 ## Démarrage Windows
 
 1. Extraire l'archive ZIP, puis ouvrir PowerShell dans le dossier `udc-nouvelle-maison`.
-2. Exécuter `node server.js` (Node.js 18 ou plus, aucune installation npm nécessaire).
+2. Exécuter `node backend/server.js` depuis la racine du projet (Node.js 18 ou plus, aucune installation npm nécessaire).
 3. Ouvrir `http://localhost:8080/` — l'administration est sur `http://localhost:8080/admin/`.
 4. Ne pas lancer le site en double-cliquant sur les fichiers HTML car le catalogue JSON est chargé par `fetch`.
 
@@ -40,7 +40,7 @@ Variables à créer dans Vercel → Settings → Environment Variables (puis *Re
 | Variable | Valeur |
 |---|---|
 | `ADMIN_EMAIL` | email de connexion |
-| `ADMIN_PASSWORD_HASH` | obtenu avec `node server.js --hash "<mot de passe>"` |
+| `ADMIN_PASSWORD_HASH` | obtenu avec `node backend/server.js --hash "<mot de passe>"` |
 | `SESSION_SECRET` | donné par la même commande |
 | `GITHUB_TOKEN` | jeton GitHub *fine-grained*, dépôt du site uniquement, permission **Contents : Read and write** |
 | `GITHUB_REPO` | `propriétaire/dépôt` |
@@ -48,16 +48,26 @@ Variables à créer dans Vercel → Settings → Environment Variables (puis *Re
 
 ### En local
 
-`node server.js` → `http://localhost:8080/admin/`. Identifiants locaux : `node server.js --set-admin <email> <mot de passe>` (fichier `.admin.json`, haché, jamais commité ni déployé). Les modifications sont écrites directement dans les fichiers (sauvegardes dans `.backups/`).
+`node backend/server.js` → `http://localhost:8080/admin/`. Identifiants locaux : `node backend/server.js --set-admin <email> <mot de passe>` (fichier `backend/.admin.json`, haché, jamais commité ni déployé). Les modifications sont écrites directement dans `frontend/` (sauvegardes dans `backend/.backups/`).
 
 Protection : session signée HttpOnly de 8 h, blocage après 5 mots de passe erronés, requêtes d'autres sites refusées.
 
 ## Structure
 
-- `index.html` et chaque sous-dossier : page HTML directe
-- `assets/site.css` : design complet
-- `assets/site.js` : rendu et interactions
-- `assets/catalogue.json` : données du catalogue
-- `assets/*.webp` : visuels locaux
+```
+frontend/              le site (seul dossier publié par Vercel, voir vercel.json)
+  index.html, catalogue/, produit/, …   pages HTML
+  admin/               page d'administration
+  assets/site.css      design · assets/site.js rendu et interactions
+  assets/admin.*       interface d'administration
+  assets/catalogue.json données du catalogue · assets/*.webp visuels
+backend/
+  server.js            serveur local : site + API admin
+  lib/core.js          API admin (connexion, produits)
+  lib/fs-store.js      enregistrement sur le disque (local)
+  lib/github-store.js  enregistrement par commit GitHub (en ligne)
+api/admin.js           point d'entrée Vercel (doit rester dans /api), utilise backend/lib
+vercel.json            publie frontend/ et route /api/admin/*
+```
 
-Le serveur `python -m http.server` fournit directement chaque répertoire ; aucune compilation npm n'est nécessaire.
+Pour seulement afficher le site : `python -m http.server 8080 --directory frontend`.
