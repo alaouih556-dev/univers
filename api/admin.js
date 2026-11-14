@@ -7,7 +7,7 @@
  *   ADMIN_PASSWORD_HASH  "salt:hash" generated with: node server.js --hash "<password>"
  *   SESSION_SECRET       long random string
  *   GITHUB_TOKEN         fine-grained token with "Contents: Read and write" on the repo
- *   GITHUB_REPO          owner/repo, e.g. alaouih556-dev/univers
+ *   GITHUB_REPO          owner/repo, e.g. alaouih556-dev/Luxor
  *   GITHUB_BRANCH        optional, default "main"
  */
 const { createAdminApi, loadCredentials } = require('./_lib/core');

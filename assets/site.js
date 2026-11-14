@@ -94,7 +94,7 @@ ${pmenu()}
    <a href="${h('contact/')}" style="--i:6"><span>Showrooms</span></a>
    <button data-open="apropos" style="--i:7"><span>À propos</span>${arr}</button>
   </nav>
-  <p class="dr-label" style="--i:9">Nos univers</p>
+  <p class="dr-label" style="--i:9">Nos Luxor</p>
   <div class="dr-chips" style="--i:10"><a href="${h('collections/horizon/')}">Horizon</a><a href="${h('collections/naturae/')}">Naturae</a><a href="${h('catalogue/cuisines/')}">Cuisines</a><a href="${h('catalogue/decoration/')}">Boutique déco</a><a href="${h('catalogue/')}">Catalogue</a></div>
   <p class="dr-label" style="--i:11">Service client</p>
   <div class="dr-list" style="--i:12">
@@ -119,15 +119,15 @@ function footer(){
  const lk=u=>u==='#'?'#':h(u);
  return `<footer class="footer" id="footer">
  <div class="ft-news">
-  <p class="ft-news-txt">Recevez par mail les dernières actualités et les offres d’Univers Design Creation</p>
+  <p class="ft-news-txt">Recevez par mail les dernières actualités et les offres d’Luxor Design Creation</p>
   <form id="newsform" class="ft-form"><input type="email" required placeholder="Votre adresse email (nom@domaine.com)" aria-label="Adresse email"><button type="submit">S’inscrire</button></form>
   <div class="ft-social"><span>Suivez-nous sur :</span>${[['ig','Instagram'],['fb','Facebook'],['pi','Pinterest'],['yt','YouTube'],['li','LinkedIn'],['tt','TikTok']].map(([k,n])=>`<a href="#" aria-label="${n}">${I[k]}</a>`).join('')}</div>
   <p class="ft-consent" id="newsout">En vous inscrivant, vous acceptez de recevoir nos propositions par e-mail et acceptez nos <a href="#">conditions d’utilisation</a> et notre <a href="#">politique de confidentialité</a>.</p>
  </div>
  <div class="ft-main">
   <div class="ft-cols">${cols.map(([t,ls])=>`<details class="ft-col" open><summary>${t}</summary>${ls.map(([n,u])=>`<a href="${lk(u)}">${n}</a>`).join('')}</details>`).join('')}</div>
-  <div class="ft-about"><img class="ft-logo" src="${local('luxor-logo-gold.webp')}" alt="Luxor Création" width="900" height="781" loading="lazy"><h3>Univers Design Creation : le design et l’<em>art de vivre</em> marocain.</h3><p>Dans notre showroom au Maroc, Univers Design Creation propose des collections originales, une fabrication sur mesure et un haut niveau de personnalisation. Découvrez nos canapés, fauteuils, tables basses, tables de repas, chaises, rangements, lits, luminaires, coussins et objets de décoration, façonnés pour composer des intérieurs singuliers.</p><p class="ft-demo">Frontend de démonstration — prix, modèles et coordonnées illustratifs jusqu’à validation.</p></div>
-  <a class="ft-store" href="${h('contact/')}">${I.pin}<span>Trouver notre showroom</span><strong>Univers Design Creation</strong></a>
+  <div class="ft-about"><img class="ft-logo" src="${local('luxor-logo-gold.webp')}" alt="Luxor Création" width="900" height="781" loading="lazy"><h3>Luxor Design Creation : le design et l’<em>art de vivre</em> marocain.</h3><p>Dans notre showroom au Maroc, Luxor Design Creation propose des collections originales, une fabrication sur mesure et un haut niveau de personnalisation. Découvrez nos canapés, fauteuils, tables basses, tables de repas, chaises, rangements, lits, luminaires, coussins et objets de décoration, façonnés pour composer des intérieurs singuliers.</p><p class="ft-demo">Frontend de démonstration — prix, modèles et coordonnées illustratifs jusqu’à validation.</p></div>
+  <a class="ft-store" href="${h('contact/')}">${I.pin}<span>Trouver notre showroom</span><strong>Luxor Design Creation</strong></a>
  </div>
  <div class="ft-bar"><nav>${[['Contact','contact/'],['Tous les showrooms','contact/'],['Charte de confidentialité','#'],['Mentions légales et conditions d’utilisation du site','#'],['Politique d’accessibilité numérique','#']].map(([n,u])=>`<a href="${lk(u)}">${n}</a>`).join('')}</nav><div class="ft-country"><span>Changer de pays</span><b>Maroc</b></div></div>
 </footer>
@@ -143,12 +143,12 @@ const catPhoto={canapes:'canapes.webp',tables:'tables.webp',chambres:'chambres.w
 const inspos=[['salon-contemporain','Salon contemporain','Un salon lumineux où les courbes s’expriment librement.','hero-cognac.webp'],['chambre-serenite','Chambre sérénité','Des textiles délicats et une atmosphère apaisante.','chambres.webp'],['salle-a-manger','L’art de recevoir','Des matières naturelles autour d’une grande table.','tables.webp'],['matiere-naturelle','Esprit matière','Bois, fibres, étoffes : le charme des textures.','hero-ivoire.webp'],['terrasse-mediterraneenne','Terrasse méditerranéenne','La vie à l’extérieur, simplement.','hero-ivoire.webp'],['atelier-coussins','Le détail textile','Coussins, revêtements et savoir-faire.','canapes.webp']];
 
 /* ---------- Home ---------- */
-const EVENT={title:['Les Journées','Univers'],date:'12-30 NOV',sub:'Des prix exceptionnels dans toutes les collections.'};
+const EVENT={title:['Les Journées','Luxor'],date:'12-30 NOV',sub:'Des prix exceptionnels dans toutes les collections.'};
 const showcase=[
- {img:'hero-salle-manger.webp',name:'Dune',by:'design Atelier Univers',url:'produit/tables-dune/'},
- {img:'hero-salon-beige.webp',name:'Oval',by:'design Atelier Univers',url:'produit/fauteuils-oval/'},
- {img:'hero-fauteuil.webp',name:'Ambre',by:'design Atelier Univers',url:'produit/canapes-ambre/'},
- {img:'hero-chambre.webp',name:'Sérénité',by:'design Atelier Univers',url:'produit/chambres-serenite/'}
+ {img:'hero-salle-manger.webp',name:'Dune',by:'design Atelier Luxor',url:'produit/tables-dune/'},
+ {img:'hero-salon-beige.webp',name:'Oval',by:'design Atelier Luxor',url:'produit/fauteuils-oval/'},
+ {img:'hero-fauteuil.webp',name:'Ambre',by:'design Atelier Luxor',url:'produit/canapes-ambre/'},
+ {img:'hero-chambre.webp',name:'Sérénité',by:'design Atelier Luxor',url:'produit/chambres-serenite/'}
 ];
 const eventLogo=(cls='')=>`<div class="ev-logo ${cls}"><span class="ev-mark" aria-hidden="true"><i></i><i></i><i></i></span><span class="ev-title">${EVENT.title.join('<br>')}</span><span class="ev-date">${EVENT.date}</span></div>`;
 function home(){
@@ -159,7 +159,7 @@ function home(){
   `<div class="ps ps-img"><img src="${local('chambres.webp')}" alt="" loading="lazy"><div class="ps-copy"><p class="ps-kick">Service conseil</p><p class="ps-h">Nos décorateurs<br>vous accompagnent</p><a class="btn-ghost" href="${h('demander-un-devis/')}">Prendre rendez-vous</a></div></div>`,
   `<div class="ps ps-img"><img src="${local('canapes.webp')}" alt="" loading="lazy"><div class="ps-copy"><p class="ps-kick">Savoir-faire</p><p class="ps-h">Fabrication<br>sur mesure</p><a class="btn-ghost" href="${h('fabrication-sur-mesure/')}">Découvrir l’atelier</a></div></div>`
  ];
- const mag=[['inspirations/salon-contemporain/','hero-salon-beige.webp','Salon contemporain, design Atelier Univers','wide'],['inspirations/terrasse-mediterraneenne/','hero-ivoire.webp','Terrasse méditerranéenne',''],['collections/signature/','hero-salle-manger.webp','Créations Automne-Hiver 2026',''],['inspirations/atelier-coussins/','hero-fauteuil.webp','Le détail textile','inside'],['inspirations/chambre-serenite/','hero-chambre.webp','Chambre sérénité','']];
+ const mag=[['inspirations/salon-contemporain/','hero-salon-beige.webp','Salon contemporain, design Atelier Luxor','wide'],['inspirations/terrasse-mediterraneenne/','hero-ivoire.webp','Terrasse méditerranéenne',''],['collections/signature/','hero-salle-manger.webp','Créations Automne-Hiver 2026',''],['inspirations/atelier-coussins/','hero-fauteuil.webp','Le détail textile','inside'],['inspirations/chambre-serenite/','hero-chambre.webp','Chambre sérénité','']];
  return `<main id="main" class="home">
  <section class="hs hs-event" id="hs-event"><img src="${local('hero-salon-vert.webp')}" alt="Salon contemporain aux tons verts et naturels" class="kb"><div class="hs-center">${eventLogo()}<a class="hs-cta" href="${h('contact/')}">Trouvez votre showroom</a></div><button class="hs-pause" id="hspause" aria-label="Pause">${I.pause}</button></section>
  ${showcase.map(s=>`<section class="hs"><img src="${local(s.img)}" alt="${esc(s.name)}" loading="lazy" class="kb"><a class="hs-cap" href="${h(s.url)}"><span class="hs-name">${esc(s.name)}</span><span class="hs-by">${esc(s.by)}</span><span class="hs-more">${I.next}en savoir +</span></a></section>`).join('')}
@@ -176,8 +176,8 @@ function home(){
   <div class="duo-promo" id="promo">${promos.map((p,i)=>p.replace('class="ps ',`class="ps ${i===0?'active ':''}`)).join('')}
    <button class="sq-arrow p-prev" id="promoprev" aria-label="Précédent">${I.prev}</button><div class="p-dots">${promos.map((_,i)=>`<button data-dot="${i}" class="${i===0?'active':''}" aria-label="Diapositive ${i+1}"></button>`).join('')}</div><button class="sq-arrow p-next" id="promonext" aria-label="Suivant">${I.next}</button>
   </div>
-  <div class="duo-mag"><a class="mag-bar" href="${h('inspirations/')}"><span class="mag-t">LE MAG</span><span class="mag-by">BY <b>UNIVERS</b></span></a>
-   <div class="mag-mosaic">${mag.map(([u,img,t,cls])=>`<a class="mm ${cls}" href="${h(u)}"><img src="${local(img)}" alt="" loading="lazy">${cls==='inside'?`<span class="mm-badge"><small>Univers</small><b>INSIDE</b><em>L’atelier 2026</em></span>`:''}<span class="mm-cap">${t}</span></a>`).join('')}</div>
+  <div class="duo-mag"><a class="mag-bar" href="${h('inspirations/')}"><span class="mag-t">LE MAG</span><span class="mag-by">BY <b>Luxor</b></span></a>
+   <div class="mag-mosaic">${mag.map(([u,img,t,cls])=>`<a class="mm ${cls}" href="${h(u)}"><img src="${local(img)}" alt="" loading="lazy">${cls==='inside'?`<span class="mm-badge"><small>Luxor</small><b>INSIDE</b><em>L’atelier 2026</em></span>`:''}<span class="mm-cap">${t}</span></a>`).join('')}</div>
   </div>
  </section>
 </main>`}
@@ -238,10 +238,10 @@ function product(slug){let p=all().find(x=>x.slug===slug);if(!p&&slug==='demo')p
 /* ---------- Collections / inspirations / services ---------- */
 function collections(which=''){const imgs=['hero-ivoire.webp','hero-cognac.webp','hero-ivoire.webp','canapes.webp'];
  if(which){const idx=Math.max(0,collNames.findIndex(x=>x.toLowerCase()===which));const label=collNames[idx];return `<main id="main">${banner(imgs[idx],'Collection '+label,'Un dialogue de textures et de matières.')}<div class="wrap">${crumbs([['Collections','collections/'],[label]])}</div>${productGridSection('La collection '+label,P.slice(idx*6,idx*6+8))}</main>`}
- return `<main id="main">${head('','Nos collections','Quatre univers de création, quatre manières de composer votre intérieur.',[['Collections']])}<section class="section tight"><div class="wrap cat-mosaic two">${collNames.map((n,i)=>`<a class="cat-tile" href="${h('collections/'+n.toLowerCase()+'/')}"><img src="${local(imgs[i])}" alt="" loading="lazy"><h3>${n}</h3></a>`).join('')}</div></section></main>`}
+ return `<main id="main">${head('','Nos collections','Quatre Luxor de création, quatre manières de composer votre intérieur.',[['Collections']])}<section class="section tight"><div class="wrap cat-mosaic two">${collNames.map((n,i)=>`<a class="cat-tile" href="${h('collections/'+n.toLowerCase()+'/')}"><img src="${local(imgs[i])}" alt="" loading="lazy"><h3>${n}</h3></a>`).join('')}</div></section></main>`}
 function inspirations(which=''){
  if(which){const z=inspos.find(x=>x[0]===which);if(!z)return `<main id="main">${head('','Inspiration introuvable')}</main>`;return `<main id="main">${banner(z[3],z[1],z[2])}<div class="wrap">${crumbs([['Le Mag','inspirations/'],[z[1]]])}<div class="inspo-gallery"><img src="${local('view-1-1.webp')}" alt=""><img src="${local('view-1-2.webp')}" alt=""></div><div class="statement left"><h2>Vivre un espace autrement.</h2><p>${esc(z[2])} Nos inspirations sont des exemples de composition et de style. Explorez les pièces de mobilier correspondant à cette ambiance.</p></div></div>${productGridSection('Les pièces de cette ambiance',P.filter((p,i)=>i%7===inspos.indexOf(z)%7).slice(0,4))}</main>`}
- return `<main id="main">${head('','Le Mag Univers','Des ambiances et idées d’aménagement pour composer votre intérieur.',[['Le Mag']])}<section class="section tight"><div class="wrap mag-grid">${inspos.map(z=>`<a class="mag-card" href="${h('inspirations/'+z[0]+'/')}"><div class="mag-img"><img src="${local(z[3])}" alt="" loading="lazy"></div><p class="kicker">Inspiration</p><h3>${z[1]}</h3><p>${z[2]}</p></a>`).join('')}</div></section></main>`}
+ return `<main id="main">${head('','Le Mag Luxor','Des ambiances et idées d’aménagement pour composer votre intérieur.',[['Le Mag']])}<section class="section tight"><div class="wrap mag-grid">${inspos.map(z=>`<a class="mag-card" href="${h('inspirations/'+z[0]+'/')}"><div class="mag-img"><img src="${local(z[3])}" alt="" loading="lazy"></div><p class="kicker">Inspiration</p><h3>${z[1]}</h3><p>${z[2]}</p></a>`).join('')}</div></section></main>`}
 function services(which=''){const serviceNames={coussins:['Coussins sur mesure','Les détails qui changent tout.','hero-ivoire.webp'],canapes:['Canapés sur mesure','Un canapé pensé pour votre intérieur.','hero-cognac.webp'],meubles:['Meubles sur mesure','La liberté de composer selon votre espace.','tables.webp']};
  if(which){const z=serviceNames[which]||serviceNames.coussins;return `<main id="main">${banner(z[2],z[0],z[1])}<div class="wrap">${crumbs([['Sur mesure','fabrication-sur-mesure/'],[z[0]]])}</div><section class="split"><div class="split-img"><img src="${local(which==='coussins'?'view-1-1.webp':'canapes.webp')}" alt=""></div><div class="split-copy"><p class="kicker">Création personnelle</p><h2>À votre mesure</h2><p>Choix des tissus, du confort, des dimensions et des finitions. Imaginez votre projet avec notre équipe, du premier dessin au devis personnalisé.</p><a class="btn btn-dark" href="${h('demander-un-devis/')}">Décrire mon projet</a></div></section></main>`}
  return `<main id="main">${banner('hero-cognac.webp','Fabrication sur mesure','Un atelier pour les coussins, les canapés et les meubles personnalisés.')}<div class="wrap">${crumbs([['Sur mesure']])}</div><section class="section tight"><div class="wrap cat-mosaic three">${Object.entries(serviceNames).map(([k,z])=>`<a class="cat-tile" href="${h('sur-mesure/'+k+'/')}"><img src="${local(z[2])}" alt="" loading="lazy"><h3>${z[0]}</h3></a>`).join('')}</div></section></main>`}
