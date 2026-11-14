@@ -3,3 +3,5 @@ backend/.admin.json
 .backups/
 *.tmp
 node_modules/
+.env
+.env.*
