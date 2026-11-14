@@ -119,7 +119,7 @@ function footer(){
  const lk=u=>u==='#'?'#':h(u);
  return `<footer class="footer" id="footer">
  <div class="ft-news">
-  <p class="ft-news-txt">Recevez par mail les dernières actualités et les offres d’Luxor Design Creation</p>
+  <p class="ft-news-txt">Recevez par mail les dernières actualités et les offres d’Luxor Creation</p>
   <form id="newsform" class="ft-form"><input type="email" required placeholder="Votre adresse email (nom@domaine.com)" aria-label="Adresse email"><button type="submit">S’inscrire</button></form>
   <div class="ft-social"><span>Suivez-nous sur :</span>${[['ig','Instagram'],['fb','Facebook'],['pi','Pinterest'],['yt','YouTube'],['li','LinkedIn'],['tt','TikTok']].map(([k,n])=>`<a href="#" aria-label="${n}">${I[k]}</a>`).join('')}</div>
   <p class="ft-consent" id="newsout">En vous inscrivant, vous acceptez de recevoir nos propositions par e-mail et acceptez nos <a href="#">conditions d’utilisation</a> et notre <a href="#">politique de confidentialité</a>.</p>
@@ -127,7 +127,7 @@ function footer(){
  <div class="ft-main">
   <div class="ft-cols">${cols.map(([t,ls])=>`<details class="ft-col" open><summary>${t}</summary>${ls.map(([n,u])=>`<a href="${lk(u)}">${n}</a>`).join('')}</details>`).join('')}</div>
   <div class="ft-about"><img class="ft-logo" src="${local('luxor-logo-gold.webp')}" alt="Luxor Création" width="900" height="781" loading="lazy"><h3>Luxor Creation : le design et l’<em>art de vivre</em> marocain.</h3><p>Dans notre showroom au Maroc, Luxor Creation propose des collections originales, une fabrication sur mesure et un haut niveau de personnalisation. Découvrez nos canapés, fauteuils, tables basses, tables de repas, chaises, rangements, lits, luminaires, coussins et objets de décoration, façonnés pour composer des intérieurs singuliers.</p><p class="ft-demo">Frontend de démonstration — prix, modèles et coordonnées illustratifs jusqu’à validation.</p></div>
-  <a class="ft-store" href="${h('contact/')}">${I.pin}<span>Trouver notre showroom</span><strong>Luxor Design Creation</strong></a>
+  <a class="ft-store" href="${h('contact/')}">${I.pin}<span>Trouver notre showroom</span><strong>Luxor Creation</strong></a>
  </div>
  <div class="ft-bar"><nav>${[['Contact','contact/'],['Tous les showrooms','contact/'],['Charte de confidentialité','#'],['Mentions légales et conditions d’utilisation du site','#'],['Politique d’accessibilité numérique','#']].map(([n,u])=>`<a href="${lk(u)}">${n}</a>`).join('')}</nav><div class="ft-country"><span>Changer de pays</span><b>Maroc</b></div></div>
 </footer>
