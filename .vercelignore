@@ -1,0 +1,6 @@
+# never upload / serve these on Vercel
+.admin.json
+.backups
+server.js
+README.md
+*.tmp

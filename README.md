@@ -29,12 +29,28 @@ La présentation est originale et **n'est pas une copie 100 % du site Roche Bobo
 
 ## Administration (`/admin/`)
 
-- Connexion par email et mot de passe. Le mot de passe est stocké **haché** (scrypt) dans `.admin.json`, jamais en clair ni envoyé au navigateur.
-- Changer les identifiants : `node server.js --set-admin <email> <mot de passe>` puis redémarrer le serveur.
-- Fonctions : ajouter un produit (avec photo), modifier le prix directement dans la liste, modifier nom / catégorie / description / matière / dimensions / couleur / photo, supprimer un produit.
-- Les modifications sont enregistrées dans `assets/catalogue.json` (copie de sauvegarde automatique dans `.backups/`), les photos dans `assets/uploads/`, et la page `produit/<slug>/` est créée ou supprimée automatiquement.
-- Protection : session HttpOnly de 8 h, blocage 15 min après 5 mots de passe erronés, requêtes d'autres sites refusées. En ligne, servir le site en **HTTPS**.
-- `python -m http.server` affiche toujours le site, mais l'administration nécessite `node server.js`.
+Ajouter / supprimer des produits, modifier prix, description, photo… Le mot de passe n'est jamais dans le code du navigateur.
+
+### En ligne (Vercel)
+
+L'API est la fonction serverless `api/admin.js`. Chaque modification devient un **commit GitHub**, puis Vercel redéploie le site (≈ 1 min).
+
+Variables à créer dans Vercel → Settings → Environment Variables (puis *Redeploy*) :
+
+| Variable | Valeur |
+|---|---|
+| `ADMIN_EMAIL` | email de connexion |
+| `ADMIN_PASSWORD_HASH` | obtenu avec `node server.js --hash "<mot de passe>"` |
+| `SESSION_SECRET` | donné par la même commande |
+| `GITHUB_TOKEN` | jeton GitHub *fine-grained*, dépôt du site uniquement, permission **Contents : Read and write** |
+| `GITHUB_REPO` | `propriétaire/dépôt` |
+| `GITHUB_BRANCH` | facultatif (`main` par défaut) |
+
+### En local
+
+`node server.js` → `http://localhost:8080/admin/`. Identifiants locaux : `node server.js --set-admin <email> <mot de passe>` (fichier `.admin.json`, haché, jamais commité ni déployé). Les modifications sont écrites directement dans les fichiers (sauvegardes dans `.backups/`).
+
+Protection : session signée HttpOnly de 8 h, blocage après 5 mots de passe erronés, requêtes d'autres sites refusées.
 
 ## Structure
 

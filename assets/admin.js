@@ -5,7 +5,7 @@ const app = document.getElementById('admin');
 const A = '../assets/';
 const esc = t => String(t ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const money = n => new Intl.NumberFormat('fr-MA').format(n) + ' DH';
-const img = p => p.image || A + ((p.gallery && p.gallery[0]) || p.fallback || 'hero-ivoire.webp');
+const img = p => p._preview || p.image || A + ((p.gallery && p.gallery[0]) || p.fallback || 'hero-ivoire.webp');
 const ICON = {
   plus: '<path d="M12 5v14M5 12h14"/>', edit: '<path d="M4 20h4L19 9l-4-4L4 16v4Z"/><path d="m13.5 6.5 4 4"/>',
   trash: '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>', eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/>',
@@ -14,7 +14,8 @@ const ICON = {
 };
 const ico = n => `<svg viewBox="0 0 24 24" aria-hidden="true">${ICON[n]}</svg>`;
 
-let state = { email: '', products: [], categories: [], colors: [], q: '', cat: '' };
+let state = { email: '', products: [], categories: [], colors: [], q: '', cat: '', live: false };
+const liveNote = () => state.live ? ' En ligne sur le site dans environ 1 minute.' : '';
 
 async function call(method, url, body) {
   const r = await fetch(url, { method, credentials: 'same-origin', headers: body ? { 'Content-Type': 'application/json' } : {}, body: body ? JSON.stringify(body) : undefined });
@@ -63,7 +64,7 @@ function showLogin(msg = '') {
 /* ---------------- dashboard ---------------- */
 async function loadDashboard() {
   const d = await call('GET', '/api/admin/products');
-  Object.assign(state, { products: d.products, categories: d.categories, colors: d.colors || [] });
+  Object.assign(state, { products: d.products, categories: d.categories, colors: d.colors || [], live: !!d.live });
   renderDashboard();
 }
 const catName = id => state.categories.find(c => c.id === id)?.name || id;
@@ -124,7 +125,7 @@ function renderRows() {
     inp.oninput = () => f.classList.toggle('dirty', +inp.value !== +p.price);
     f.onsubmit = async e => {
       e.preventDefault(); if (+inp.value === +p.price) return;
-      try { const d = await call('PUT', '/api/admin/products/' + p.slug, { price: inp.value }); Object.assign(p, d.product); f.classList.remove('dirty'); renderStats(); toast(`Prix de « ${p.name} » : ${money(p.price)}`); }
+      try { const d = await call('PUT', '/api/admin/products/' + p.slug, { price: inp.value }); Object.assign(p, d.product); f.classList.remove('dirty'); renderStats(); toast(`Prix de « ${p.name} » : ${money(p.price)}.` + liveNote()); }
       catch (x) { if (x.message !== 'auth') toast(x.message, 'err'); }
     };
     tr.querySelector('[data-edit]').onclick = () => openEditor(p);
@@ -206,8 +207,9 @@ function openEditor(p) {
     btn.disabled = true; btn.textContent = 'Enregistrement…'; err.textContent = '';
     try {
       const d = isNew ? await call('POST', '/api/admin/products', body) : await call('PUT', '/api/admin/products/' + p.slug, body);
+      if (photo) d.product._preview = photo;
       if (isNew) state.products.push(d.product); else Object.assign(p, d.product);
-      closeModal(); renderRows(); toast(isNew ? `« ${d.product.name} » a été ajouté au catalogue.` : `« ${d.product.name} » a été mis à jour.`);
+      closeModal(); renderRows(); toast((isNew ? `« ${d.product.name} » a été ajouté au catalogue.` : `« ${d.product.name} » a été mis à jour.`) + liveNote());
     } catch (x) { if (x.message !== 'auth') { err.textContent = x.message; btn.disabled = false; btn.textContent = isNew ? 'Ajouter le produit' : 'Enregistrer'; } }
   };
 }
@@ -223,7 +225,7 @@ function confirmDelete(p) {
   const b = m.querySelector('#dodel'); b.focus();
   b.onclick = async () => {
     b.disabled = true;
-    try { await call('DELETE', '/api/admin/products/' + p.slug, {}); state.products = state.products.filter(x => x !== p); closeModal(); renderRows(); toast(`« ${p.name} » a été supprimé.`); }
+    try { await call('DELETE', '/api/admin/products/' + p.slug, {}); state.products = state.products.filter(x => x !== p); closeModal(); renderRows(); toast(`« ${p.name} » a été supprimé.` + liveNote()); }
     catch (x) { b.disabled = false; if (x.message !== 'auth') toast(x.message, 'err'); }
   };
 }
@@ -233,7 +235,8 @@ function confirmDelete(p) {
   try { const d = await call('GET', '/api/admin/me'); state.email = d.email; await loadDashboard(); }
   catch (x) {
     if (x.message === 'auth') return;
-    app.innerHTML = `<main class="login"><div class="login-card">${logo}<h1>Serveur requis</h1><p class="login-sub">L’administration fonctionne uniquement avec le serveur du site. Lancez <code>node server.js</code> dans le dossier du projet, puis ouvrez <code>http://localhost:8080/admin/</code>.</p><a class="back" href="../">← Retour au site</a></div></main>`;
+    const noApi = /^Erreur (404|405)$/.test(x.message) || x instanceof TypeError;
+    app.innerHTML = `<main class="login"><div class="login-card">${logo}<h1>${noApi ? 'Serveur requis' : 'Administration indisponible'}</h1><p class="login-sub">${noApi ? 'L’API d’administration est introuvable. En local, lancez <code>node server.js</code> puis ouvrez <code>http://localhost:8080/admin/</code>. En ligne, vérifiez que le dossier <code>api/</code> et <code>vercel.json</code> ont bien été déployés.' : esc(x.message)}</p><a class="back" href="../">← Retour au site</a></div></main>`;
   }
 })();
 })();
