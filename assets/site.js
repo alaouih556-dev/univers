@@ -35,6 +35,7 @@ const I={
  li:'<svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8.3 10.5V16M8.3 7.8v.1M11.5 16v-5.5M11.5 13c0-1.6 1-2.6 2.2-2.6s2 .8 2 2.4V16"/></svg>',
  tt:'<svg viewBox="0 0 24 24"><path d="M13.5 4v10.3a2.9 2.9 0 1 1-2.9-2.9M13.5 4c.3 2.2 1.8 3.7 4 3.9"/></svg>'
 };
+const MAPS_URL='https://maps.app.goo.gl/a7R7iuoCFBifyNRA8';
 const logo=(cls='')=>`<a class="logo ${cls}" href="${h('')}" aria-label="Accueil - Luxor Création"><img class="logo-full" src="${local('luxor-logo-gold.webp')}" alt="Luxor Création" width="900" height="781"><img class="logo-compact" src="${local('luxor-logo-compact.webp')}" alt="" aria-hidden="true" width="900" height="657"></a>`;
 
 /* ---------- Navigation data ---------- */
@@ -127,7 +128,7 @@ function footer(){
  <div class="ft-main">
   <div class="ft-cols">${cols.map(([t,ls])=>`<details class="ft-col" open><summary>${t}</summary>${ls.map(([n,u])=>`<a href="${lk(u)}">${n}</a>`).join('')}</details>`).join('')}</div>
   <div class="ft-about"><img class="ft-logo" src="${local('luxor-logo-gold.webp')}" alt="Luxor Création" width="900" height="781" loading="lazy"><h3>Luxor Creation : le design et l’<em>art de vivre</em> marocain.</h3><p>Dans notre showroom au Maroc, Luxor Creation propose des collections originales, une fabrication sur mesure et un haut niveau de personnalisation. Découvrez nos canapés, fauteuils, tables basses, tables de repas, chaises, rangements, lits, luminaires, coussins et objets de décoration, façonnés pour composer des intérieurs singuliers.</p><p class="ft-demo">Frontend de démonstration — prix, modèles et coordonnées illustratifs jusqu’à validation.</p></div>
-  <a class="ft-store" href="${h('contact/')}">${I.pin}<span>Trouver notre showroom</span><strong>Luxor Creation</strong></a>
+  <a class="ft-store" href="${MAPS_URL}" target="_blank" rel="noopener" aria-label="Trouver notre showroom Luxor Création sur Google Maps (nouvel onglet)">${I.pin}<span>Trouver notre showroom</span><strong>Luxor Creation</strong></a>
  </div>
  <div class="ft-bar"><nav>${[['Contact','contact/'],['Tous les showrooms','contact/'],['Charte de confidentialité','#'],['Mentions légales et conditions d’utilisation du site','#'],['Politique d’accessibilité numérique','#']].map(([n,u])=>`<a href="${lk(u)}">${n}</a>`).join('')}</nav><div class="ft-country"><span>Changer de pays</span><b>Maroc</b></div></div>
 </footer>
@@ -153,7 +154,7 @@ const showcase=[
 const eventLogo=(cls='')=>`<div class="ev-logo ${cls}"><span class="ev-mark" aria-hidden="true"><i></i><i></i><i></i></span><span class="ev-title">${EVENT.title.join('<br>')}</span><span class="ev-date">${EVENT.date}</span></div>`;
 function home(){
  const promos=[
-  `<div class="ps ps-event"><div class="ps-copy">${eventLogo('small')}<p class="ps-sub">${EVENT.sub}</p><a class="btn-ghost" href="${h('contact/')}">Trouvez votre showroom</a></div></div>`,
+  `<div class="ps ps-event"><div class="ps-copy">${eventLogo('small')}<p class="ps-sub">${EVENT.sub}</p><a class="btn-ghost" href="${MAPS_URL}" target="_blank" rel="noopener">Trouvez votre showroom</a></div></div>`,
   `<div class="ps ps-img"><img src="${local('hero-ivoire.webp')}" alt="" loading="lazy"><div class="ps-copy"><p class="ps-kick">Nouveautés</p><p class="ps-h">Créations<br>Automne-Hiver 2026</p><a class="btn-ghost" href="${h('collections/signature/')}">Découvrir</a></div></div>`,
   `<div class="ps ps-img"><img src="${local('tables.webp')}" alt="" loading="lazy"><div class="ps-copy"><p class="ps-kick">Le catalogue</p><p class="ps-h">Feuilletez<br>toutes nos pièces</p><a class="btn-ghost" href="${h('catalogue/')}">Voir le catalogue</a></div></div>`,
   `<div class="ps ps-img"><img src="${local('chambres.webp')}" alt="" loading="lazy"><div class="ps-copy"><p class="ps-kick">Service conseil</p><p class="ps-h">Nos décorateurs<br>vous accompagnent</p><a class="btn-ghost" href="${h('demander-un-devis/')}">Prendre rendez-vous</a></div></div>`,
@@ -161,7 +162,7 @@ function home(){
  ];
  const mag=[['inspirations/salon-contemporain/','hero-salon-beige.webp','Salon contemporain, design Atelier Luxor','wide'],['inspirations/terrasse-mediterraneenne/','hero-ivoire.webp','Terrasse méditerranéenne',''],['collections/signature/','hero-salle-manger.webp','Créations Automne-Hiver 2026',''],['inspirations/atelier-coussins/','hero-fauteuil.webp','Le détail textile','inside'],['inspirations/chambre-serenite/','hero-chambre.webp','Chambre sérénité','']];
  return `<main id="main" class="home">
- <section class="hs hs-event" id="hs-event"><img src="${local('hero-salon-vert.webp')}" alt="Salon contemporain aux tons verts et naturels" class="kb"><div class="hs-center">${eventLogo()}<a class="hs-cta" href="${h('contact/')}">Trouvez votre showroom</a></div><button class="hs-pause" id="hspause" aria-label="Pause">${I.pause}</button></section>
+ <section class="hs hs-event" id="hs-event"><img src="${local('hero-salon-vert.webp')}" alt="Salon contemporain aux tons verts et naturels" class="kb"><div class="hs-center">${eventLogo()}<a class="hs-cta" href="${MAPS_URL}" target="_blank" rel="noopener">Trouvez votre showroom</a></div><button class="hs-pause" id="hspause" aria-label="Pause">${I.pause}</button></section>
  ${showcase.map(s=>`<section class="hs"><img src="${local(s.img)}" alt="${esc(s.name)}" loading="lazy" class="kb"><a class="hs-cap" href="${h(s.url)}"><span class="hs-name">${esc(s.name)}</span><span class="hs-by">${esc(s.by)}</span><span class="hs-more">${I.next}en savoir +</span></a></section>`).join('')}
  <section class="ba-sec" aria-label="Avant / Après : terrasse réalisée par Luxor Création">
   <div class="ba" style="--pos:50%">
