@@ -18,6 +18,7 @@
  *   POST   /api/admin/orders         PUT|DELETE   /api/admin/orders/:id      PATCH /api/admin/orders/:id/status
  *   POST   /api/admin/deliveries     PUT|DELETE   /api/admin/deliveries/:id  PATCH /api/admin/deliveries/:id/status
  *   POST   /api/admin/receipts       PUT|DELETE   /api/admin/receipts/:id    PATCH /api/admin/receipts/:id/status
+ *   POST   /api/admin/projects/:id/invoice     issue the invoice of a fully paid project (never edited or deleted)
  *   PUT    /api/admin/company        DELETE /api/admin/sample-data
  *   GET    /api/admin/catalog        POST /api/admin/products   PATCH|DELETE /api/admin/products/:slug
  */
@@ -66,6 +67,7 @@ const routes = [
   ['PUT', '/admin/receipts/:id', ({ token, p, body }) => admin.saveReceipt(token, p.id, body).then(id => ({ id })), { admin: true }],
   ['PATCH', '/admin/receipts/:id/status', ({ token, p, body }) => admin.setReceiptStatus(token, p.id, body), { admin: true }],
   ['DELETE', '/admin/receipts/:id', ({ token, p }) => admin.removeReceipt(token, p.id), { admin: true }],
+  ['POST', '/admin/projects/:id/invoice', ({ token, p }) => admin.createInvoice(token, p.id).then(id => ({ id })), { admin: true }],
   ['PUT', '/admin/company', ({ token, body }) => admin.saveCompany(token, body), { admin: true }],
   ['DELETE', '/admin/sample-data', ({ token }) => admin.removeSampleData(token), { admin: true }],
 

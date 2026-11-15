@@ -53,6 +53,11 @@ const mapReceipt = r => ({
   supplier: { name: r.supplier_name, phone: r.supplier_phone, ice: r.supplier_ice, bl: r.supplier_bl, blDate: r.supplier_bl_date },
   items: (r.receipt_items || []).sort((a, b) => a.sort - b.sort).map(i => ({ id: i.id, label: i.label, reference: i.reference || '', qtyOrdered: i.qty_ordered == null ? null : +i.qty_ordered, qty: +i.qty, condition: i.condition, unit: i.unit }))
 });
+const mapInvoice = x => ({
+  id: x.id, number: x.number, projectId: x.project_id, clientId: x.client_id, date: x.date, client: x.client, company: x.company, lines: x.lines,
+  discountPct: +x.discount_pct, subtotal: x.subtotal, discount: x.discount, net: x.net, vatRate: x.vat_rate, vat: x.vat, total: x.total,
+  payments: x.payments, quoteNumber: x.quote_number, orderNumber: x.order_number
+});
 const mapOrder = o => ({
   id: o.id, number: o.number, clientId: o.client_id, quoteId: o.quote_id, date: o.date, title: o.title, type: o.type, status: o.status,
   discount: +o.discount, vat: o.vat, depositPct: o.deposit_pct, paymentMethod: o.payment_method, deliveryAddress: o.delivery_address,
@@ -61,7 +66,7 @@ const mapOrder = o => ({
 
 async function getAll(token) {
   const o = { token };
-  const [clients, projects, payments, messages, quotes, revenue, company, orders, deliveries, receipts] = await Promise.all([
+  const [clients, projects, payments, messages, quotes, revenue, company, orders, deliveries, receipts, invoices] = await Promise.all([
     rest('clients?select=*&order=name', o),
     rest('projects?select=*,project_pieces(*),project_events(*)&order=start_date.desc', o),
     rest('payments?select=*&order=date,created_at', o),
@@ -71,11 +76,12 @@ async function getAll(token) {
     rest('company?select=*&id=eq.1', o),
     rest('orders?select=*,order_items(*)&order=date.desc,number.desc', o).catch(() => []),   // empty until orders.sql has been run
     rest('deliveries?select=*,delivery_items(*)&order=date.desc,number.desc', o).catch(() => []),   // empty until deliveries.sql has been run
-    rest('receipts?select=*,receipt_items(*)&order=date.desc,number.desc', o).catch(() => [])   // empty until receipts.sql has been run
+    rest('receipts?select=*,receipt_items(*)&order=date.desc,number.desc', o).catch(() => []),   // empty until receipts.sql has been run
+    rest('invoices?select=*&order=number.desc', o).catch(() => [])   // empty until invoices.sql has been run
   ]);
   return {
     clients: clients.map(mapClient), projects: projects.map(mapProject), payments: payments.map(mapPayment),
-    messages: messages.map(mapMessage), quotes: quotes.map(mapQuote), orders: orders.map(mapOrder), deliveries: deliveries.map(mapDelivery), receipts: receipts.map(mapReceipt),
+    messages: messages.map(mapMessage), quotes: quotes.map(mapQuote), orders: orders.map(mapOrder), deliveries: deliveries.map(mapDelivery), receipts: receipts.map(mapReceipt), invoices: invoices.map(mapInvoice),
     revenue: Object.fromEntries(revenue.map(r => [`${r.year}-${r.month}`, { amount: r.amount, sample: r.sample }])),
     company: company[0] || { name: 'Luxor Création' }
   };
@@ -149,8 +155,9 @@ async function updateClient(token, cid, data) {
   const rows = await rest(`clients?id=eq.${id(cid)}`, { token, method: 'PATCH', body: clientFields(data), headers: ret }).catch(dupe);
   if (!rows?.length) throw new ApiError(404, 'Client not found.');
 }
+const hasInvoices = e => { if (/foreign key|invoices/i.test(e.message)) throw new ApiError(400, 'This client has invoices: it cannot be deleted (invoices must be kept).'); throw e; };
 async function removeClient(token, cid) {   // projects, payments and quotes are deleted with it (cascade)
-  const rows = await rest(`clients?id=eq.${id(cid)}`, { token, method: 'DELETE', headers: ret });
+  const rows = await rest(`clients?id=eq.${id(cid)}`, { token, method: 'DELETE', headers: ret }).catch(hasInvoices);
   if (!rows?.length) throw new ApiError(404, 'Client not found.');
 }
 
@@ -396,6 +403,57 @@ async function setReceiptStatus(token, rid, { status } = {}) {
 }
 const removeReceipt = (token, rid) => rest(`receipts?id=eq.${id(rid)}`, { token, method: 'DELETE' });
 
+/* ---------------- invoices (factures) ----------------
+ * Issued once a project is fully paid. Legal document (Morocco, CGI art. 145): consecutive number,
+ * seller ICE / IF, client details (+ ICE for companies), lines HT, VAT, total TTC, payments.
+ * Everything is stored as it is on the invoice day; an invoice can never be changed or deleted. */
+const invoicesMissing = e => { if (/invoices|schema cache/i.test(e.message)) throw new ApiError(503, 'The database needs an update: run backend/supabase/invoices.sql in Supabase.'); throw e; };
+const METHOD_FR = { 'Bank transfer': 'Virement bancaire', Cheque: 'Chèque', Card: 'Carte bancaire', Cash: 'Espèces' };
+async function createInvoice(token, pid) {
+  pid = id(pid);
+  const [existing] = await rest(`invoices?select=id&project_id=eq.${pid}`, { token }).catch(invoicesMissing);
+  if (existing) return existing.id;   // one invoice per project
+  const [p] = await rest(`projects?select=id,title,client_id,total_price&id=eq.${pid}`, { token });
+  if (!p) throw new ApiError(404, 'Project not found');
+  if (!(p.total_price > 0)) throw new ApiError(400, 'The project has no price.');
+  const pays = await rest(`payments?select=date,amount,method,label&project_id=eq.${pid}&order=date,created_at`, { token });
+  const paid = pays.reduce((s, x) => s + x.amount, 0);
+  if (paid < p.total_price) throw new ApiError(400, 'The project is not fully paid yet: the invoice can be issued when the remaining amount is 0.');
+  const [[co], [c]] = await Promise.all([rest('company?select=*&id=eq.1', { token }), rest(`clients?select=*&id=eq.${p.client_id}`, { token })]);
+  if (!co?.ice || !co?.if_number) throw new ApiError(400, 'Add your company ICE and IF (identifiant fiscal) in Settings before issuing an invoice.');
+  // lines: from the quote the project comes from (if its total still matches), otherwise one line for the project
+  const [q] = await rest(`quotes?select=id,number,discount,vat,quote_items(*)&project_id=eq.${pid}`, { token });
+  let lines, discountPct = 0, vatOn = true, subtotal, discount = 0, net, vat, total = p.total_price;
+  if (q) {
+    const items = (q.quote_items || []).sort((a, b) => a.sort - b.sort);
+    const ls = items.map(i => Math.round(Math.max(0, +i.qty) * i.unit)), sub = ls.reduce((s2, v) => s2 + v, 0);
+    const disc = Math.round(sub * Math.min(100, Math.max(0, +q.discount || 0)) / 100), n = sub - disc, v = q.vat ? Math.round(n * 0.2) : 0;
+    if (n + v === p.total_price) {
+      lines = items.map((i, k) => ({ label: i.label, description: [i.description, [i.dimensions, i.material, i.color].filter(Boolean).join(' · ')].filter(Boolean).join(' — '), qty: +i.qty, unit: i.unit, total: ls[k] }));
+      discountPct = +q.discount || 0; vatOn = !!q.vat; subtotal = sub; discount = disc; net = n; vat = v;
+    }
+  }
+  if (!lines) {   // price agreed on the project (TTC, VAT 20 % included)
+    net = Math.round(total / 1.2); vat = total - net; subtotal = net;
+    lines = [{ label: p.title, description: '', qty: 1, unit: net, total: net }];
+  }
+  if (net + vat !== total) total = net + vat;
+  let orderNumber = '';
+  if (q) { const [o] = await rest(`orders?select=number&quote_id=eq.${q.id}&status=neq.cancelled&order=date`, { token }).catch(() => []); orderNumber = o?.number || ''; }
+  const body = {
+    project_id: pid, client_id: p.client_id, date: iso(today()),
+    client: { name: c.name, address: c.address, city: c.city, phone: c.phone, email: c.email, ice: '' },
+    company: Object.fromEntries(['name', 'tagline', 'address', 'city', 'phone', 'email', 'website', 'ice', 'rc', 'if_number', 'patente', 'bank'].map(k => [k, co[k] || ''])),
+    lines, discount_pct: discountPct, subtotal, discount, net, vat_rate: vatOn ? 20 : 0, vat, total,
+    payments: pays.map(x => ({ date: x.date, amount: x.amount, method: METHOD_FR[x.method] || x.method, label: x.label })),
+    quote_number: q?.number || '', order_number: orderNumber
+  };
+  // client ICE (companies): taken from its purchase order if one was given
+  if (q) { const [o] = await rest(`orders?select=client_ice&quote_id=eq.${q.id}&client_ice=neq.`, { token }).catch(() => []); if (o?.client_ice) body.client.ice = o.client_ice; }
+  const [inv] = await rest('invoices', { token, method: 'POST', body, headers: ret }).catch(e => { if (e.duplicate) throw new ApiError(409, 'This project already has an invoice.'); return invoicesMissing(e); });
+  return inv.id;
+}
+
 /* ---------------- company details & sample data ---------------- */
 async function saveCompany(token, data = {}) {
   const body = Object.fromEntries(COMPANY_FIELDS.map(k => [k, clean(data[k], k === 'bank' ? 80 : 120)]));
@@ -404,7 +462,7 @@ async function saveCompany(token, data = {}) {
   await rest('company?id=eq.1', { token, method: 'PATCH', body });
 }
 async function removeSampleData(token) {
-  await rest('clients?sample=is.true', { token, method: 'DELETE' });   // cascades to their projects, payments and quotes
+  await rest('clients?sample=is.true', { token, method: 'DELETE' }).catch(hasInvoices);   // cascades to their projects, payments and quotes
   await rest('messages?sample=is.true', { token, method: 'DELETE' });
   await rest('revenue_history?sample=is.true', { token, method: 'DELETE' });
 }
@@ -412,6 +470,6 @@ async function removeSampleData(token) {
 module.exports = {
   getAll, updateStatus, toggleStep, addPayment, addNote, markRead,
   addClient, updateClient, removeClient, saveQuote, setQuoteStatus, removeQuote, convertQuote,
-  saveOrder, setOrderStatus, removeOrder, saveDelivery, setDeliveryStatus, removeDelivery, saveReceipt, setReceiptStatus, removeReceipt,
+  saveOrder, setOrderStatus, removeOrder, saveDelivery, setDeliveryStatus, removeDelivery, saveReceipt, setReceiptStatus, removeReceipt, createInvoice,
   saveCompany, removeSampleData
 };

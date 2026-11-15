@@ -525,6 +525,18 @@ section.card+section.card{margin-top:18px}
 .rc-line .rc-ord,.rc-line .rc-qty,.rc-line .rc-unit{text-align:right}
 .rc-line .rc-qty{font-weight:700}
 .rc-total{font-weight:700}
+.inv-btns{display:flex;gap:8px;margin-top:12px}.inv-btns .btn{flex:1;justify-content:center}
+.confirm.inv-dialog{max-width:560px;margin:0 auto;text-align:left}.confirm.inv-dialog h2,.confirm.inv-dialog>p.muted{text-align:center}
+.inv-sum{display:grid;grid-template-columns:auto 1fr;gap:6px 18px;margin:14px 0;padding:14px 16px;border-radius:14px;background:var(--bg);border:1px solid var(--line);font-size:14px}
+.inv-sum dt{color:var(--muted)}.inv-sum dd{margin:0;text-align:right}
+.inv-need{margin:0 0 12px;padding:14px 16px;border-radius:14px;border:1.5px solid var(--or);background:rgba(212,175,55,.08)}
+.inv-need p{margin:0 0 10px;font-size:13px}
+body.pdf-export .quote-doc{border:0!important;box-shadow:none!important;border-radius:0!important;background:#fff!important;color:#1E2B27!important;max-width:none}
+.full-btn{width:100%;justify-content:center;margin-top:12px}
+.qd-words{margin:0 0 14px;font-size:13px;font-weight:600;font-style:italic;color:#2F4F46}
+.qd-pays{width:100%;border-collapse:collapse;font-size:12px;margin-bottom:10px}
+.qd-pays td{padding:5px 0;border-bottom:1px dashed #E9DDC8}.qd-pays td+td{padding-left:10px}
+.qd-pays .num{text-align:right;white-space:nowrap}
 .qd-internal{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#86691a}
 .qd-row-bad td{background:#FBEDE8}
 .qd-cond{font-weight:600}.qd-cond.c-ok{color:#2F4F46}.qd-cond.c-damaged,.qd-cond.c-missing{color:#B4472E}

@@ -90,9 +90,9 @@ async function busy(el, promise, okMsg) {
   catch (x) { if (x.message !== 'auth') toast(x.message, 'err'); if (ui.route !== 'catalog') renderRoute(true); }
   finally { if (el && el.isConnected) el.disabled = false; }
 }
-function confirmBox({ title, text, ok = 'Delete', run, done }) {
+function confirmBox({ title, text, ok = 'Delete', run, done, danger = true }) {
   const m = openModal(`<div class="confirm"><h2>${esc(title)}</h2><p class="muted">${text}</p><p class="form-err" id="cferr"></p>
-    <div class="m-foot"><button type="button" class="btn outline" data-close>Cancel</button><button type="button" class="btn danger" id="cfok">${ico('trash')}${esc(ok)}</button></div></div>`);
+    <div class="m-foot"><button type="button" class="btn outline" data-close>Cancel</button><button type="button" class="btn ${danger ? 'danger' : 'primary'}" id="cfok">${ico(danger ? 'trash' : 'check')}${esc(ok)}</button></div></div>`);
   const b = $('#cfok', m); b.focus();
   b.onclick = async () => { b.disabled = true; try { await run(); closeModal(); done?.(); } catch (x) { if (x.message !== 'auth') $('#cferr', m).textContent = x.message; b.disabled = false; } };
 }
@@ -227,7 +227,7 @@ function renderRoute(fromStore = false) {
   ui.route = route; ui.id = id; ui.key = key;
   $$('[data-nav]').forEach(a => { const on = a.dataset.nav === route; a.classList.toggle('active', on); if (on) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); });
   const v = $('#view'), y = scrollY;
-  const views = { dashboard: viewDashboard, projects: id ? () => viewProject(id) : viewProjects, clients: id === 'quote' && sub ? () => viewQuote(sub) : id === 'order' && sub ? () => viewOrder(sub) : id === 'delivery' && sub ? () => viewDelivery(sub) : id === 'receipt' && sub ? () => viewReceipt(sub) : viewClients, catalog: viewCatalog, payments: viewPayments, messages: viewMessages, settings: viewSettings };
+  const views = { dashboard: viewDashboard, projects: id ? () => viewProject(id) : viewProjects, clients: id === 'quote' && sub ? () => viewQuote(sub) : id === 'order' && sub ? () => viewOrder(sub) : id === 'delivery' && sub ? () => viewDelivery(sub) : id === 'receipt' && sub ? () => viewReceipt(sub) : id === 'invoice' && sub ? () => viewInvoice(sub) : viewClients, catalog: viewCatalog, payments: viewPayments, messages: viewMessages, settings: viewSettings };
   views[route](v);
   document.title = `${NAV.find(([k]) => k === route)[1]} — Univers admin`;
   if (changed && !fromStore) { scrollTo(0, 0); v.focus({ preventScroll: true }); $('.nav-pill .active')?.scrollIntoView({ inline: 'center', block: 'nearest' }); }
@@ -430,13 +430,16 @@ function viewProject(id) {
           ${due > 0 ? `<form class="pay-form" id="payform"><p class="lbl">Record a payment</p>
             <div class="pf-row"><input name="amount" type="number" min="1" max="${due}" step="1" placeholder="Amount (MAD)" required aria-label="Amount in MAD"><input name="date" type="date" value="${S.iso(S.today())}" max="${S.iso(S.today())}" aria-label="Payment date"></div>
             <div class="pf-row"><select name="method" aria-label="Payment method"><option value="Bank transfer">Bank transfer</option><option value="Cheque">Cheque</option><option value="Card">Card</option><option value="Cash">Cash</option></select><button class="btn primary" type="submit">Add payment</button></div>
-            <button type="button" class="link-btn" id="payfull">Fill remaining (${money(due)})</button><p class="form-err" id="payerr" role="alert"></p></form>` : '<p class="paid-ok">' + ico('check') + ' Fully paid</p>'}
+            <button type="button" class="link-btn" id="payfull">Fill remaining (${money(due)})</button><p class="form-err" id="payerr" role="alert"></p></form>` : `<p class="paid-ok">${ico('check')} Fully paid</p>
+            ${p.totalPrice > 0 ? (S.invoiceOf(p.id) ? `<div class="inv-btns"><a class="btn outline" href="#/clients/invoice/${S.invoiceOf(p.id).id}">${ico('file')}Invoice ${esc(S.invoiceOf(p.id).number)}</a><button class="btn primary" id="dlinvoice" data-id="${S.invoiceOf(p.id).id}">${ico('download')}Download</button></div>` : `<button class="btn primary full-btn" id="mkinvoice">${ico('file')}Create the invoice</button>`) : ''}`}
         </section>
       </div>
     </div>`;
   $$('[data-status]', v).forEach(b => b.onclick = () => { if (b.dataset.status === p.status) return; busy(b, S.updateStatus(p.id, b.dataset.status), `“${p.title}” is now ${S.STATUS_LABEL[b.dataset.status]}.`); });
   $$('[data-step]', v).forEach(c => c.onchange = () => busy(c, S.toggleStep(p.id, c.dataset.step)));
   $('#noteform', v).onsubmit = e => { e.preventDefault(); const t = e.target.note.value.trim(); if (!t) return; busy(e.target.querySelector('button'), S.addNote(p.id, t), 'Update added to the timeline.'); };
+  const mi = $('#mkinvoice', v); if (mi) mi.onclick = () => openInvoiceDialog(p);
+  const di = $('#dlinvoice', v); if (di) di.onclick = () => { ui.autoDownload = true; location.hash = '#/clients/invoice/' + di.dataset.id; };
   const pf = $('#payform', v);
   if (pf) {
     $('#payfull', v).onclick = () => { pf.amount.value = due; pf.amount.focus(); };
@@ -451,7 +454,7 @@ const QS = S.QUOTE_STATUS;
 const qpill = st => `<span class="status q-${st}">${QS[st]}</span>`;
 function viewClients(v) {
   const db = S.get(), q = (ui.cq || '').trim().toLowerCase();
-  const rows = db.clients.map(c => { const ps = db.projects.filter(p => p.clientId === c.id); return { c, ps, qs: db.quotes.filter(x => x.clientId === c.id), os: db.orders.filter(x => x.clientId === c.id), ds: db.deliveries.filter(x => x.clientId === c.id), rs: db.receipts.filter(x => x.clientId === c.id), billed: ps.reduce((s, p) => s + p.totalPrice, 0), due: ps.reduce((s, p) => s + S.dueFor(p), 0), done: ps.some(p => p.status === 'finished') }; })
+  const rows = db.clients.map(c => { const ps = db.projects.filter(p => p.clientId === c.id); return { c, ps, qs: db.quotes.filter(x => x.clientId === c.id), os: db.orders.filter(x => x.clientId === c.id), ds: db.deliveries.filter(x => x.clientId === c.id), rs: db.receipts.filter(x => x.clientId === c.id), fs: db.invoices.filter(x => x.clientId === c.id), billed: ps.reduce((s, p) => s + p.totalPrice, 0), due: ps.reduce((s, p) => s + S.dueFor(p), 0), done: ps.some(p => p.status === 'finished') }; })
     .filter(r => !q || [r.c.name, r.c.city, r.c.email, r.c.phone, S.CLIENT_TYPES[r.c.type]].join(' ').toLowerCase().includes(q))
     .sort((a, b) => b.billed - a.billed || a.c.name.localeCompare(b.c.name));
   const qf = ui.qf || '';
@@ -460,12 +463,12 @@ function viewClients(v) {
   v.innerHTML = `${titleRow('Clients', `<div class="row-gap"><span class="chip"><i class="live"></i>${db.clients.length} clients · ${S.metrics().openQuotes} open quotes</span><button class="btn primary" id="addclient">${ico('plus')}New client</button></div>`)}
     <div class="toolbar tb-clients"><label class="search-pill">${ico('search')}<input type="search" id="csearch" placeholder="Search a client, city, email…" value="${esc(ui.cq || '')}" aria-label="Search clients"></label>
       <button class="btn outline" id="newquote">${ico('file')}New quote</button></div>
-    ${rows.length ? `<section class="client-grid">${rows.map(({ c, ps, qs, os, ds, rs, billed, due, done }, i) => `<article class="card ${['white', 'sable', 'white', 'pastel'][i % 4]} client-card" data-client="${c.id}">
+    ${rows.length ? `<section class="client-grid">${rows.map(({ c, ps, qs, os, ds, rs, fs, billed, due, done }, i) => `<article class="card ${['white', 'sable', 'white', 'pastel'][i % 4]} client-card" data-client="${c.id}">
       <div class="cc-top"><span class="cc-av">${esc(initials(c.name))}</span><div><b>${esc(c.name)}</b><small class="muted">${S.CLIENT_TYPES[c.type]}${c.city ? ' · ' + esc(c.city) : ''}</small></div>
         <div class="cc-act"><button class="icon-btn" data-editclient title="Edit client" aria-label="Edit ${esc(c.name)}">${ico('edit')}</button><button class="icon-btn danger" data-delclient title="Delete client" aria-label="Delete ${esc(c.name)}">${ico('trash')}</button></div></div>
       <ul class="contact compact">${c.phone ? `<li>${ico('phone')}<a href="tel:${esc(c.phone.replace(/\s/g, ''))}">${esc(c.phone)}</a></li>` : ''}${c.email ? `<li>${ico('mail')}<a href="mailto:${esc(c.email)}">${esc(c.email)}</a></li>` : ''}${c.address ? `<li>${ico('pin')}<span>${esc(c.address)}</span></li>` : ''}${!c.phone && !c.email && !c.address ? '<li class="muted">No contact details yet.</li>' : ''}</ul>
       <hr class="dash"><div class="cc-stats"><span><small>Projects</small><b>${ps.length}</b></span><span><small>Billed</small><b>${money(billed)}</b></span><span><small>Due</small><b class="${due ? 'gold-amount' : ''}">${money(due)}</b></span></div>
-      ${ps.length || qs.length || os.length || ds.length || rs.length ? `<div class="cc-projects">${ps.map(p => `<a href="#/projects/${p.id}">${esc(p.title)} ${pill(p.status)}</a>`).join('')}${qs.map(x => `<a href="#/clients/quote/${x.id}">${ico('file')}<span class="cc-q">${esc(x.number)} · ${money(S.quoteTotals(x).total)}</span> ${qpill(x.status)}</a>`).join('')}${os.map(x => `<a href="#/clients/order/${x.id}">${ico('file')}<span class="cc-q">${esc(x.number)} · ${money(S.quoteTotals(x).total)}</span> ${opill(x.status)}</a>`).join('')}${ds.map(x => `<a href="#/clients/delivery/${x.id}">${ico('file')}<span class="cc-q">${esc(x.number)} · ${fdate(x.date)}</span> ${dpill(x.status)}</a>`).join('')}${rs.map(x => `<a href="#/clients/receipt/${x.id}">${ico('file')}<span class="cc-q">${esc(x.number)} · ${esc(x.supplier.name)}</span> ${rpill(x.status)}</a>`).join('')}</div>` : ''}
+      ${ps.length || qs.length || os.length || ds.length || rs.length || fs.length ? `<div class="cc-projects">${ps.map(p => `<a href="#/projects/${p.id}">${esc(p.title)} ${pill(p.status)}</a>`).join('')}${qs.map(x => `<a href="#/clients/quote/${x.id}">${ico('file')}<span class="cc-q">${esc(x.number)} · ${money(S.quoteTotals(x).total)}</span> ${qpill(x.status)}</a>`).join('')}${os.map(x => `<a href="#/clients/order/${x.id}">${ico('file')}<span class="cc-q">${esc(x.number)} · ${money(S.quoteTotals(x).total)}</span> ${opill(x.status)}</a>`).join('')}${ds.map(x => `<a href="#/clients/delivery/${x.id}">${ico('file')}<span class="cc-q">${esc(x.number)} · ${fdate(x.date)}</span> ${dpill(x.status)}</a>`).join('')}${rs.map(x => `<a href="#/clients/receipt/${x.id}">${ico('file')}<span class="cc-q">${esc(x.number)} · ${esc(x.supplier.name)}</span> ${rpill(x.status)}</a>`).join('')}${fs.map(x => `<a href="#/clients/invoice/${x.id}">${ico('file')}<span class="cc-q">${esc(x.number)} · ${money(x.total)}</span> <span class="status r-validated">Paid</span></a>`).join('')}</div>` : ''}
       <div class="cc-btns"><button class="btn pill-sm cc-quote" data-quoteclient>${ico('plus')}New quote</button><button class="btn pill-sm cc-quote" data-orderclient>${ico('plus')}Purchase order</button><button class="btn pill-sm cc-quote" data-deliveryclient>${ico('plus')}Delivery note</button><button class="btn pill-sm cc-quote" data-receiptclient>${ico('plus')}Reception note</button></div>
       ${done ? '<span class="chg pos cc-done">Completed</span>' : ''}</article>`).join('')}</section>`
       : `<div class="card white empty-state"><p>${q ? 'No client matches your search.' : 'No clients yet.'}</p>${q ? '' : `<button class="btn primary" id="addclient2">${ico('plus')}Add your first client</button>`}</div>`}
@@ -493,7 +496,12 @@ function viewClients(v) {
       ${db.receipts.map(x => `<tr><td data-l="Number"><b class="p-title">${esc(x.number)}</b></td><td data-l="Client">${esc(S.client(x.clientId)?.name)}</td><td data-l="Supplier">${esc(x.supplier.name)}</td><td data-l="Supplier delivery note">${esc(x.supplier.bl || '—')}</td>
         <td data-l="For order">${x.orderId && S.order(x.orderId) ? `<a href="#/clients/order/${x.orderId}">${esc(S.order(x.orderId).number)}</a>` : '—'}</td>
         <td data-l="Date">${fdate(x.date)}</td><td data-l="Amount (no VAT)" class="num"><b>${money(S.receiptTotals(x).total)}</b></td><td data-l="Status">${rpill(x.status)}</td><td class="act"><a class="btn pill-sm" href="#/clients/receipt/${x.id}">Open</a></td></tr>`).join('')}</tbody></table></div>`
-      : `<p class="empty">No reception notes yet — use “Reception note” on a client card when goods arrive from a supplier.</p>`}</section>`;
+      : `<p class="empty">No reception notes yet — use “Reception note” on a client card when goods arrive from a supplier.</p>`}</section>
+    <section class="card white tbl-card quotes-card"><div class="card-head"><h2>Invoices <span class="muted">(factures)</span></h2><span class="muted small">Issued from fully paid projects</span></div>
+      ${db.invoices.length ? `<div class="tbl-wrap"><table class="ptbl"><thead><tr><th>Number</th><th>Client</th><th>Project</th><th>Date</th><th class="num">Total (TTC)</th><th></th></tr></thead><tbody>
+      ${db.invoices.map(x => `<tr><td data-l="Number"><b class="p-title">${esc(x.number)}</b></td><td data-l="Client">${esc(x.client?.name || '')}</td><td data-l="Project">${S.project(x.projectId) ? `<a href="#/projects/${x.projectId}">${esc(S.project(x.projectId).title)}</a>` : '—'}</td>
+        <td data-l="Date">${fdate(x.date)}</td><td data-l="Total (TTC)" class="num"><b>${money(x.total)}</b></td><td class="act"><a class="btn pill-sm" href="#/clients/invoice/${x.id}">Open</a></td></tr>`).join('')}</tbody></table></div>`
+      : `<p class="empty">No invoices yet — open a project: when the remaining amount is 0, use “Issue the invoice”.</p>`}</section>`;
   const add = () => openClientForm(null);
   $('#addclient', v).onclick = add; const a2 = $('#addclient2', v); if (a2) a2.onclick = add;
   $('#newquote', v).onclick = () => db.clients.length ? openQuoteEditor({ clientId: rows[0]?.c.id || db.clients[0].id }) : toast('Add a client first.', 'err');
@@ -535,6 +543,7 @@ function openClientForm(c) {
   };
 }
 function deleteClient(c) {
+  if (S.get().invoices.some(x => x.clientId === c.id)) return toast('This client has invoices: it cannot be deleted (invoices must be kept).', 'err');
   const u = S.clientUsage(c.id), paid = u.payments.reduce((s, x) => s + x.amount, 0);
   const linked = [u.projects.length && `${u.projects.length} project${u.projects.length > 1 ? 's' : ''}`, u.payments.length && `${u.payments.length} payment${u.payments.length > 1 ? 's' : ''} (${money(paid)})`, u.quotes.length && `${u.quotes.length} quote${u.quotes.length > 1 ? 's' : ''}`, u.orders.length && `${u.orders.length} purchase order${u.orders.length > 1 ? 's' : ''}`, u.deliveries.length && `${u.deliveries.length} delivery note${u.deliveries.length > 1 ? 's' : ''}`, u.receipts.length && `${u.receipts.length} reception note${u.receipts.length > 1 ? 's' : ''}`].filter(Boolean);
   confirmBox({ title: `Delete “${c.name}”?`, ok: 'Delete client',
@@ -1051,6 +1060,117 @@ function viewReceipt(id) {
   $('#rprint', v).onclick = () => { document.body.classList.add('print-quote'); window.print(); };
   $('#rdel', v).onclick = () => confirmBox({ title: `Delete reception note ${r.number}?`, text: 'The reception note will be permanently deleted.', ok: 'Delete reception note', run: () => S.removeReceipt(r.id), done: () => { toast(`Reception note ${r.number} deleted.`); location.hash = '#/clients'; } });
   const ed = $('#redit', v); if (ed) ed.onclick = () => openReceiptEditor(r);
+}
+
+/* ---------------- invoices (factures) ----------------
+ * Issued from a fully paid project. Printed in French with the mentions of the Moroccan CGI (art. 145):
+ * seller identity + ICE / IF / RC / patente, consecutive number and date, client (+ ICE for companies),
+ * lines with unit price HT, VAT rate and amount, total TTC (also in words), payments received ("acquittée"). */
+function frWords(n) {   // whole number → French words (for the amount in words)
+  const u = ['zéro', 'un', 'deux', 'trois', 'quatre', 'cinq', 'six', 'sept', 'huit', 'neuf', 'dix', 'onze', 'douze', 'treize', 'quatorze', 'quinze', 'seize'];
+  const t = { 20: 'vingt', 30: 'trente', 40: 'quarante', 50: 'cinquante', 60: 'soixante' };
+  const below100 = x => {
+    if (x <= 16) return u[x];
+    if (x < 20) return 'dix-' + u[x - 10];
+    if (x < 70) { const d = Math.floor(x / 10) * 10, r = x % 10; return t[d] + (r === 0 ? '' : r === 1 ? ' et un' : '-' + u[r]); }
+    if (x < 80) return 'soixante' + (x === 71 ? ' et onze' : '-' + below100(x - 60));
+    return 'quatre-vingt' + (x === 80 ? 's' : '-' + below100(x - 80));
+  };
+  const below1000 = (x, plural = true) => {
+    const c = Math.floor(x / 100), r = x % 100;
+    const head = c === 0 ? '' : c === 1 ? 'cent' : u[c] + ' cent' + (r === 0 && plural ? 's' : '');
+    return [head, r ? below100(r) : ''].filter(Boolean).join(' ');
+  };
+  if (n === 0) return 'zéro';
+  const parts = [], mil = Math.floor(n / 1e6), th = Math.floor((n % 1e6) / 1000), rest = n % 1000;
+  if (mil) parts.push(mil === 1 ? 'un million' : below1000(mil) + ' millions');
+  if (th) parts.push(th === 1 ? 'mille' : below1000(th, false).replace(/vingts$/, 'vingt') + ' mille');
+  if (rest) parts.push(below1000(rest));
+  return parts.join(' ');
+}
+const amountWords = n => { const dh = Math.floor(n), cts = Math.round((n - dh) * 100); const s = frWords(dh) + (dh >= 1e6 && dh % 1e6 === 0 ? ' de' : '') + ' dirham' + (dh > 1 ? 's' : '') + (cts ? ' et ' + frWords(cts) + ' centime' + (cts > 1 ? 's' : '') : ''); return s.charAt(0).toUpperCase() + s.slice(1); };
+const LABEL_FR = { deposit: 'Acompte', installment: 'Versement', balance: 'Solde' };
+function viewInvoice(id) {
+  const v = $('#view'), x = S.invoice(id);
+  if (!x) { v.innerHTML = `${titleRow('Invoice not found')}<p><a class="btn outline" href="#/clients">${ico('back')}Back to clients</a></p>`; return; }
+  const co = x.company || {}, c = x.client || {}, p = S.project(x.projectId);
+  const paid = (x.payments || []).reduce((s, y) => s + y.amount, 0);
+  const legal = [co.ice && `ICE : ${co.ice}`, co.if_number && `IF : ${co.if_number}`, co.rc && `RC : ${co.rc}`, co.patente && `Patente : ${co.patente}`].filter(Boolean).join(' · ');
+  v.innerHTML = `<a class="back-link" href="${p ? '#/projects/' + p.id : '#/clients'}">${ico('back')} ${p ? esc(p.title) : 'Clients & quotes'}</a>
+    <div class="title-row detail-title"><div><p class="lbl">Invoice · ${esc(c.name || '')}</p><h1>${esc(x.number)}</h1></div><span class="status r-validated">Paid</span></div>
+    <div class="quote-bar card white"><p class="muted small">An invoice is a legal document: it cannot be changed or deleted.</p>
+      <div class="row-gap">${p ? `<a class="btn outline" href="#/projects/${p.id}">${ico('file')}${esc(p.ref)}</a>` : ''}<button class="btn outline" id="iprint">${ico('file')}Print</button><button class="btn primary" id="idownload">${ico('download')}Download PDF</button></div></div>
+    <article class="quote-doc invoice-doc" lang="fr">
+      <header class="qd-head">
+        <div class="qd-co"><img src="${A}luxor-logo-gold.webp" alt="${esc(co.name || 'Luxor Création')}"><div><b>${esc(co.name || 'Luxor Création')}</b>${co.tagline ? `<span>${esc(co.tagline)}</span>` : ''}${co.address || co.city ? `<span>${esc([co.address, co.city].filter(Boolean).join(', '))}</span>` : ''}${co.phone ? `<span>Tél. ${esc(co.phone)}</span>` : ''}${co.email ? `<span>${esc(co.email)}</span>` : ''}${co.website ? `<span>${esc(co.website)}</span>` : ''}</div></div>
+        <div class="qd-title"><h2>FACTURE</h2><dl><dt>N°</dt><dd>${esc(x.number)}</dd><dt>Date</dt><dd>${frDate(x.date)}</dd>${x.quoteNumber ? `<dt>Réf. devis</dt><dd>${esc(x.quoteNumber)}</dd>` : ''}${x.orderNumber ? `<dt>Réf. commande</dt><dd>${esc(x.orderNumber)}</dd>` : ''}</dl></div>
+      </header>
+      <section class="qd-parties">
+        <div class="qd-client"><p class="qd-lbl">Vendeur</p><b>${esc(co.name || '')}</b>${co.ice ? `<span>ICE : ${esc(co.ice)}</span>` : ''}${co.if_number ? `<span>IF : ${esc(co.if_number)}</span>` : ''}${co.rc ? `<span>RC : ${esc(co.rc)}</span>` : ''}${co.patente ? `<span>Patente : ${esc(co.patente)}</span>` : ''}</div>
+        <div class="qd-object"><p class="qd-lbl">Client</p><b>${esc(c.name || '')}</b>${c.address ? `<span>${esc(c.address)}</span>` : ''}${c.city ? `<span>${esc(c.city)}</span>` : ''}${c.phone ? `<span>Tél. ${esc(c.phone)}</span>` : ''}${c.ice ? `<span>ICE : ${esc(c.ice)}</span>` : ''}</div>
+      </section>
+      <div class="qd-table-wrap"><table class="qd-table"><thead><tr><th>Désignation</th><th class="num">Qté</th><th class="num">P.U. HT</th><th class="num">Total HT</th></tr></thead>
+        <tbody>${(x.lines || []).map(l => `<tr><td><b>${esc(l.label)}</b>${l.description ? `<p class="qd-desc">${esc(l.description)}</p>` : ''}</td><td class="num">${String(l.qty).replace('.', ',')}</td><td class="num">${frMoney(l.unit)}</td><td class="num">${frMoney(l.total)}</td></tr>`).join('')}</tbody></table></div>
+      <section class="qd-sum">
+        <div class="qd-notes">
+          <p class="qd-lbl">Arrêtée la présente facture à la somme de</p><p class="qd-words">${esc(amountWords(x.total))} TTC.</p>
+          <p class="qd-lbl">Règlements reçus</p>
+          <table class="qd-pays"><tbody>${(x.payments || []).map(y => `<tr><td>${frDate(y.date)}</td><td>${LABEL_FR[y.label] || ''}</td><td>${esc(y.method)}</td><td class="num">${frMoney(y.amount)}</td></tr>`).join('')}</tbody></table>
+          ${co.bank ? `<p class="qd-small">RIB : ${esc(co.bank)}</p>` : ''}
+        </div>
+        <dl class="qd-totals"><dt>Total HT</dt><dd>${frMoney(x.subtotal)}</dd>${x.discount ? `<dt>Remise ${String(x.discountPct).replace('.', ',')} %</dt><dd>− ${frMoney(x.discount)}</dd><dt>Net HT</dt><dd>${frMoney(x.net)}</dd>` : ''}${x.vatRate ? `<dt>TVA ${x.vatRate} %</dt><dd>${frMoney(x.vat)}</dd>` : '<dt>TVA</dt><dd>Non applicable</dd>'}<dt class="tot">Total TTC</dt><dd class="tot">${frMoney(x.total)}</dd><dt>Montant payé</dt><dd>${frMoney(paid)}</dd><dt>Reste à payer</dt><dd>${frMoney(Math.max(0, x.total - paid))}</dd></dl>
+      </section>
+      <p class="qd-verdict ok">Facture acquittée — payée intégralement.</p>
+      <section class="qd-signs"><div></div><div><p class="qd-lbl">${esc(co.name || 'Luxor Création')}</p><p class="qd-small">Cachet et signature.</p><div class="qd-box"></div></div></section>
+      ${legal ? `<footer class="qd-foot">${esc(co.name || 'Luxor Création')}${co.address || co.city ? ' · ' + esc([co.address, co.city].filter(Boolean).join(', ')) : ''} · ${esc(legal)}</footer>` : ''}
+    </article>`;
+  $('#iprint', v).onclick = () => { document.body.classList.add('print-quote'); window.print(); };
+  const dl = $('#idownload', v);
+  dl.onclick = () => downloadPdf($('.invoice-doc', v), `Facture-${x.number}.pdf`, dl);
+  if (ui.autoDownload) { ui.autoDownload = false; dl.click(); }
+}
+
+/* "Issue the invoice": shows what will be invoiced; asks for the company ICE / IF here if they are missing */
+function openInvoiceDialog(p) {
+  const co = S.get().company || {}, c = S.client(p.clientId) || {}, q = S.get().quotes.find(x => x.projectId === p.id), need = !co.ice || !co.if_number;
+  const m = openModal(`<form id="iform" class="confirm inv-dialog" novalidate>
+    <h2>Create the invoice</h2>
+    <dl class="inv-sum"><dt>Client</dt><dd>${esc(c.name || '')}</dd><dt>Project</dt><dd>${esc(p.title)}</dd>${q ? `<dt>From quote</dt><dd>${esc(q.number)}</dd>` : ''}<dt>Total (incl. VAT)</dt><dd><b>${money(p.totalPrice)}</b></dd><dt>Paid</dt><dd>${money(S.paidFor(p))} ✓</dd></dl>
+    ${need ? `<div class="inv-need"><p><b>One-time step:</b> a Moroccan invoice must show your company ICE and IF. Enter them below — they are saved in Settings for all future invoices.</p>
+      <div class="fields"><label>Company ICE *<input name="ice" maxlength="40" value="${esc(co.ice || '')}" placeholder="15 digits" required></label><label>Company IF (identifiant fiscal) *<input name="if_number" maxlength="40" value="${esc(co.if_number || '')}" required></label></div></div>` : ''}
+    <p class="muted small">The invoice gets the next number. Afterwards it cannot be changed or deleted, but you can download or print it at any time.</p>
+    <p class="form-err" id="ierr" role="alert"></p>
+    <div class="m-foot"><button type="button" class="btn outline" data-close>Cancel</button><button type="submit" class="btn primary">${ico('check')}Create the invoice</button></div></form>`);
+  const f = $('#iform', m); (f.ice || $('[type=submit]', f)).focus();
+  f.onsubmit = async e => {
+    e.preventDefault(); const btn = $('[type=submit]', f), err = $('#ierr', m); err.textContent = '';
+    if (need) {
+      const ice = f.ice.value.trim(), ifn = f.if_number.value.trim();
+      if (!ice || !ifn) { err.textContent = 'Enter the company ICE and IF.'; return; }
+    }
+    btn.disabled = true;
+    try {
+      if (need) await S.saveCompany({ ...S.get().company, ice: f.ice.value.trim(), if_number: f.if_number.value.trim() });
+      const id = await S.createInvoice(p.id);
+      closeModal(); toast('Invoice created.'); location.hash = '#/clients/invoice/' + id;
+    } catch (x) { if (x.message !== 'auth') err.textContent = x.message; btn.disabled = false; }
+  };
+}
+
+/* Download a document as a PDF file (html2pdf.js, stored in assets/vendor, loaded the first time) */
+let pdfLib = null;
+const loadPdfLib = () => pdfLib ||= new Promise((resolve, reject) => { const sc = document.createElement('script'); sc.src = A + 'vendor/html2pdf.bundle.min.js'; sc.onload = () => resolve(window.html2pdf); sc.onerror = () => { pdfLib = null; reject(new Error('The PDF tool could not be loaded. Use Print instead.')); }; document.head.appendChild(sc); });
+async function downloadPdf(el, filename, btn) {
+  if (btn) btn.disabled = true;
+  try {
+    const html2pdf = await loadPdfLib();
+    document.body.classList.add('pdf-export');   // light colours, no shadows, whatever the theme
+    await html2pdf().set({ margin: [8, 8, 10, 8], filename, image: { type: 'jpeg', quality: 0.96 },
+      html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff', logging: false },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }, pagebreak: { mode: ['css', 'legacy'], avoid: ['tr', '.qd-signs', '.qd-sum'] } }).from(el).save();
+    toast('PDF downloaded.');
+  } catch (x) { toast(x.message || 'The PDF could not be created.', 'err'); }
+  finally { document.body.classList.remove('pdf-export'); if (btn) btn.disabled = false; }
 }
 
 /* ---------------- payments ---------------- */
