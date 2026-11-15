@@ -18,6 +18,8 @@ const TYPE_LABEL = { catalog: 'Catalog order', custom: 'Custom-made', interior: 
 const STEPS = [['design', 'Design validated'], ['materials', 'Materials ordered'], ['fabrication', 'Fabrication'], ['finishing', 'Finishing'], ['delivery', 'Delivery & installation']];
 const CLIENT_TYPES = { individual: 'Individual', company: 'Company', hotel: 'Hotel', office: 'Office', riad: 'Riad', clinic: 'Clinic', school: 'School', restaurant: 'Restaurant' };
 const QUOTE_STATUS = { draft: 'Draft', sent: 'Sent', accepted: 'Accepted', refused: 'Refused' };
+const ORDER_STATUS = { draft: 'Draft', confirmed: 'Confirmed', delivered: 'Delivered', cancelled: 'Cancelled' };
+const PAY_METHODS = ['Bank transfer', 'Cheque', 'Card', 'Cash'];
 const fmtMAD = n => new Intl.NumberFormat(window.LuxorI18n?.numLocale || 'en-US', { maximumFractionDigits: 0 }).format(Math.round(n || 0)) + ' MAD';
 
 /* ---------------- API access ---------------- */
@@ -25,9 +27,9 @@ let request = null;                       // set by init(): (path, {method, body
 const enc = encodeURIComponent;
 const send = (method, path, body) => request('/admin' + path, { method, body });
 
-let db = { clients: [], projects: [], payments: [], messages: [], quotes: [], revenue: {}, company: {} };
+let db = { clients: [], projects: [], payments: [], messages: [], quotes: [], orders: [], revenue: {}, company: {} };
 let loaded = false;
-async function refresh() { db = await request('/admin/data'); loaded = true; }
+async function refresh() { db = await request('/admin/data'); db.orders ||= []; loaded = true; }
 const subs = new Set();
 const notify = () => subs.forEach(fn => { try { fn(db); } catch (e) { console.error(e); } });
 async function after(fn) { const out = await fn(); await refresh(); notify(); return out; }
@@ -35,6 +37,7 @@ async function after(fn) { const out = await fn(); await refresh(); notify(); re
 const project = id => db.projects.find(p => p.id === id);
 const client = id => db.clients.find(c => c.id === id);
 const quote = id => db.quotes.find(q => q.id === id);
+const order = id => db.orders.find(o => o.id === id);
 
 /* ---------------- selectors ---------------- */
 const paidFor = (p, until) => db.payments.filter(x => x.projectId === p.id && (!until || parse(x.date) <= until)).reduce((s, x) => s + x.amount, 0);
@@ -125,7 +128,7 @@ const addClient = data => after(() => send('POST', '/clients', data));
 const updateClient = (id, data) => after(() => send('PATCH', `/clients/${enc(id)}`, data));
 function clientUsage(id) {
   const projects = db.projects.filter(p => p.clientId === id);
-  return { projects, quotes: db.quotes.filter(q => q.clientId === id), payments: db.payments.filter(x => projects.some(p => p.id === x.projectId)) };
+  return { projects, quotes: db.quotes.filter(q => q.clientId === id), orders: db.orders.filter(o => o.clientId === id), payments: db.payments.filter(x => projects.some(p => p.id === x.projectId)) };
 }
 const removeClient = id => after(() => send('DELETE', `/clients/${enc(id)}`));   // projects, payments and quotes are deleted with it
 
@@ -143,6 +146,11 @@ const setQuoteStatus = (id, status) => after(() => send('PATCH', `/quotes/${enc(
 const removeQuote = id => after(() => send('DELETE', `/quotes/${enc(id)}`));
 const convertQuote = id => after(async () => (await send('POST', `/quotes/${enc(id)}/convert`)).projectId);   // returns the new project id
 
+/* ---------------- purchase orders (bons de commande) ---------------- */
+const saveOrder = data => after(async () => (await send(data.id ? 'PUT' : 'POST', data.id ? `/orders/${enc(data.id)}` : '/orders', data)).id);
+const setOrderStatus = (id, status) => after(() => send('PATCH', `/orders/${enc(id)}/status`, { status }));
+const removeOrder = id => after(() => send('DELETE', `/orders/${enc(id)}`));
+
 /* ---------------- company details (printed on quotes) ---------------- */
 const COMPANY_FIELDS = ['name', 'tagline', 'address', 'city', 'phone', 'email', 'website', 'ice', 'rc', 'if_number', 'patente', 'bank'];
 const saveCompany = data => after(() => send('PUT', '/company', data));
@@ -152,16 +160,17 @@ const sampleCounts = () => ({ clients: db.clients.filter(c => c.sample).length, 
 const removeSampleData = () => after(() => send('DELETE', '/sample-data'));
 
 window.LuxorStore = {
-  STATUSES, STATUS_LABEL, TYPE_LABEL, STEPS, CLIENT_TYPES, QUOTE_STATUS,
+  STATUSES, STATUS_LABEL, TYPE_LABEL, STEPS, CLIENT_TYPES, QUOTE_STATUS, ORDER_STATUS, PAY_METHODS,
   async init(req) { request = req; await refresh(); },
   reload: () => after(() => null),
   loaded: () => loaded,
   get: () => db, subscribe: fn => (subs.add(fn), () => subs.delete(fn)),
-  project, client, quote, metrics, notifications,
+  project, client, quote, order, metrics, notifications,
   paidFor, depositFor, dueFor, payStatus, progressOf,
   updateStatus, toggleStep, addPayment, addNote, markRead,
   addClient, updateClient, removeClient, clientUsage,
   quoteTotals, quoteExpiry, saveQuote, setQuoteStatus, removeQuote, convertQuote,
+  saveOrder, setOrderStatus, removeOrder,
   sampleCounts, removeSampleData, saveCompany, COMPANY_FIELDS,
   fmtMAD, parse, iso, today
 };

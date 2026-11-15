@@ -15,6 +15,7 @@
  *   POST   /api/admin/clients        PATCH|DELETE /api/admin/clients/:id
  *   POST   /api/admin/quotes         PUT|DELETE   /api/admin/quotes/:id
  *   PATCH  /api/admin/quotes/:id/status          POST /api/admin/quotes/:id/convert
+ *   POST   /api/admin/orders         PUT|DELETE   /api/admin/orders/:id      PATCH /api/admin/orders/:id/status
  *   PUT    /api/admin/company        DELETE /api/admin/sample-data
  *   GET    /api/admin/catalog        POST /api/admin/products   PATCH|DELETE /api/admin/products/:slug
  */
@@ -51,6 +52,10 @@ const routes = [
   ['PATCH', '/admin/quotes/:id/status', ({ token, p, body }) => admin.setQuoteStatus(token, p.id, body), { admin: true }],
   ['DELETE', '/admin/quotes/:id', ({ token, p }) => admin.removeQuote(token, p.id), { admin: true }],
   ['POST', '/admin/quotes/:id/convert', ({ token, p }) => admin.convertQuote(token, p.id).then(id => ({ projectId: id })), { admin: true }],
+  ['POST', '/admin/orders', ({ token, body }) => admin.saveOrder(token, null, body).then(id => ({ id })), { admin: true }],
+  ['PUT', '/admin/orders/:id', ({ token, p, body }) => admin.saveOrder(token, p.id, body).then(id => ({ id })), { admin: true }],
+  ['PATCH', '/admin/orders/:id/status', ({ token, p, body }) => admin.setOrderStatus(token, p.id, body), { admin: true }],
+  ['DELETE', '/admin/orders/:id', ({ token, p }) => admin.removeOrder(token, p.id), { admin: true }],
   ['PUT', '/admin/company', ({ token, body }) => admin.saveCompany(token, body), { admin: true }],
   ['DELETE', '/admin/sample-data', ({ token }) => admin.removeSampleData(token), { admin: true }],
 

@@ -227,7 +227,7 @@ function renderRoute(fromStore = false) {
   ui.route = route; ui.id = id; ui.key = key;
   $$('[data-nav]').forEach(a => { const on = a.dataset.nav === route; a.classList.toggle('active', on); if (on) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); });
   const v = $('#view'), y = scrollY;
-  const views = { dashboard: viewDashboard, projects: id ? () => viewProject(id) : viewProjects, clients: id === 'quote' && sub ? () => viewQuote(sub) : viewClients, catalog: viewCatalog, payments: viewPayments, messages: viewMessages, settings: viewSettings };
+  const views = { dashboard: viewDashboard, projects: id ? () => viewProject(id) : viewProjects, clients: id === 'quote' && sub ? () => viewQuote(sub) : id === 'order' && sub ? () => viewOrder(sub) : viewClients, catalog: viewCatalog, payments: viewPayments, messages: viewMessages, settings: viewSettings };
   views[route](v);
   document.title = `${NAV.find(([k]) => k === route)[1]} — Univers admin`;
   if (changed && !fromStore) { scrollTo(0, 0); v.focus({ preventScroll: true }); $('.nav-pill .active')?.scrollIntoView({ inline: 'center', block: 'nearest' }); }
@@ -451,21 +451,22 @@ const QS = S.QUOTE_STATUS;
 const qpill = st => `<span class="status q-${st}">${QS[st]}</span>`;
 function viewClients(v) {
   const db = S.get(), q = (ui.cq || '').trim().toLowerCase();
-  const rows = db.clients.map(c => { const ps = db.projects.filter(p => p.clientId === c.id); return { c, ps, qs: db.quotes.filter(x => x.clientId === c.id), billed: ps.reduce((s, p) => s + p.totalPrice, 0), due: ps.reduce((s, p) => s + S.dueFor(p), 0), done: ps.some(p => p.status === 'finished') }; })
+  const rows = db.clients.map(c => { const ps = db.projects.filter(p => p.clientId === c.id); return { c, ps, qs: db.quotes.filter(x => x.clientId === c.id), os: db.orders.filter(x => x.clientId === c.id), billed: ps.reduce((s, p) => s + p.totalPrice, 0), due: ps.reduce((s, p) => s + S.dueFor(p), 0), done: ps.some(p => p.status === 'finished') }; })
     .filter(r => !q || [r.c.name, r.c.city, r.c.email, r.c.phone, S.CLIENT_TYPES[r.c.type]].join(' ').toLowerCase().includes(q))
     .sort((a, b) => b.billed - a.billed || a.c.name.localeCompare(b.c.name));
   const qf = ui.qf || '';
   const quotes = db.quotes.filter(x => !qf || x.status === qf);
+  const of = ui.of || '', orders = db.orders.filter(x => !of || x.status === of);
   v.innerHTML = `${titleRow('Clients', `<div class="row-gap"><span class="chip"><i class="live"></i>${db.clients.length} clients · ${S.metrics().openQuotes} open quotes</span><button class="btn primary" id="addclient">${ico('plus')}New client</button></div>`)}
     <div class="toolbar tb-clients"><label class="search-pill">${ico('search')}<input type="search" id="csearch" placeholder="Search a client, city, email…" value="${esc(ui.cq || '')}" aria-label="Search clients"></label>
       <button class="btn outline" id="newquote">${ico('file')}New quote</button></div>
-    ${rows.length ? `<section class="client-grid">${rows.map(({ c, ps, qs, billed, due, done }, i) => `<article class="card ${['white', 'sable', 'white', 'pastel'][i % 4]} client-card" data-client="${c.id}">
+    ${rows.length ? `<section class="client-grid">${rows.map(({ c, ps, qs, os, billed, due, done }, i) => `<article class="card ${['white', 'sable', 'white', 'pastel'][i % 4]} client-card" data-client="${c.id}">
       <div class="cc-top"><span class="cc-av">${esc(initials(c.name))}</span><div><b>${esc(c.name)}</b><small class="muted">${S.CLIENT_TYPES[c.type]}${c.city ? ' · ' + esc(c.city) : ''}</small></div>
         <div class="cc-act"><button class="icon-btn" data-editclient title="Edit client" aria-label="Edit ${esc(c.name)}">${ico('edit')}</button><button class="icon-btn danger" data-delclient title="Delete client" aria-label="Delete ${esc(c.name)}">${ico('trash')}</button></div></div>
       <ul class="contact compact">${c.phone ? `<li>${ico('phone')}<a href="tel:${esc(c.phone.replace(/\s/g, ''))}">${esc(c.phone)}</a></li>` : ''}${c.email ? `<li>${ico('mail')}<a href="mailto:${esc(c.email)}">${esc(c.email)}</a></li>` : ''}${c.address ? `<li>${ico('pin')}<span>${esc(c.address)}</span></li>` : ''}${!c.phone && !c.email && !c.address ? '<li class="muted">No contact details yet.</li>' : ''}</ul>
       <hr class="dash"><div class="cc-stats"><span><small>Projects</small><b>${ps.length}</b></span><span><small>Billed</small><b>${money(billed)}</b></span><span><small>Due</small><b class="${due ? 'gold-amount' : ''}">${money(due)}</b></span></div>
-      ${ps.length || qs.length ? `<div class="cc-projects">${ps.map(p => `<a href="#/projects/${p.id}">${esc(p.title)} ${pill(p.status)}</a>`).join('')}${qs.map(x => `<a href="#/clients/quote/${x.id}">${ico('file')}<span class="cc-q">${esc(x.number)} · ${money(S.quoteTotals(x).total)}</span> ${qpill(x.status)}</a>`).join('')}</div>` : ''}
-      <button class="btn pill-sm cc-quote" data-quoteclient>${ico('plus')}New quote</button>
+      ${ps.length || qs.length || os.length ? `<div class="cc-projects">${ps.map(p => `<a href="#/projects/${p.id}">${esc(p.title)} ${pill(p.status)}</a>`).join('')}${qs.map(x => `<a href="#/clients/quote/${x.id}">${ico('file')}<span class="cc-q">${esc(x.number)} · ${money(S.quoteTotals(x).total)}</span> ${qpill(x.status)}</a>`).join('')}${os.map(x => `<a href="#/clients/order/${x.id}">${ico('file')}<span class="cc-q">${esc(x.number)} · ${money(S.quoteTotals(x).total)}</span> ${opill(x.status)}</a>`).join('')}</div>` : ''}
+      <div class="cc-btns"><button class="btn pill-sm cc-quote" data-quoteclient>${ico('plus')}New quote</button><button class="btn pill-sm cc-quote" data-orderclient>${ico('plus')}Purchase order</button></div>
       ${done ? '<span class="chg pos cc-done">Completed</span>' : ''}</article>`).join('')}</section>`
       : `<div class="card white empty-state"><p>${q ? 'No client matches your search.' : 'No clients yet.'}</p>${q ? '' : `<button class="btn primary" id="addclient2">${ico('plus')}Add your first client</button>`}</div>`}
     <section class="card white tbl-card quotes-card"><div class="card-head"><h2>Quotes <span class="muted">(devis)</span></h2>
@@ -474,17 +475,26 @@ function viewClients(v) {
       ${quotes.map(x => { const exp = S.quoteExpiry(x), expired = x.status === 'sent' && S.parse(exp) < S.today(); return `<tr><td data-l="Number"><b class="p-title">${esc(x.number)}</b></td><td data-l="Client">${esc(S.client(x.clientId)?.name)}</td><td data-l="Subject">${esc(x.title)}</td>
         <td data-l="Date">${fdate(x.date)}</td><td data-l="Valid until" class="${expired ? 'late' : ''}">${fdate(exp)}${expired ? ' · expired' : ''}</td><td data-l="Total (TTC)" class="num"><b>${money(S.quoteTotals(x).total)}</b></td><td data-l="Status">${qpill(x.status)}${x.projectId ? ` <a class="type" href="#/projects/${x.projectId}">Project</a>` : ''}</td>
         <td class="act"><a class="btn pill-sm" href="#/clients/quote/${x.id}">Open</a></td></tr>`; }).join('')}</tbody></table></div>`
-      : `<p class="empty">${qf ? 'No quote with this status.' : 'No quotes yet — use “New quote” on a client card.'}</p>`}</section>`;
+      : `<p class="empty">${qf ? 'No quote with this status.' : 'No quotes yet — use “New quote” on a client card.'}</p>`}</section>
+    <section class="card white tbl-card quotes-card"><div class="card-head"><h2>Purchase orders <span class="muted">(bons de commande)</span></h2>
+      <div class="seg" role="tablist" aria-label="Filter purchase orders">${[['', 'All'], ...Object.entries(OS)].map(([k, l]) => `<button role="tab" aria-selected="${of === k}" class="${of === k ? 'on' : ''}" data-of="${k}">${l}</button>`).join('')}</div></div>
+      ${orders.length ? `<div class="tbl-wrap"><table class="ptbl"><thead><tr><th>Number</th><th>Client</th><th>Subject</th><th>Date</th><th>Delivery</th><th class="num">Total (TTC)</th><th>Status</th><th></th></tr></thead><tbody>
+      ${orders.map(x => `<tr><td data-l="Number"><b class="p-title">${esc(x.number)}</b>${x.quoteId && S.quote(x.quoteId) ? `<small class="muted"> · ${esc(S.quote(x.quoteId).number)}</small>` : ''}</td><td data-l="Client">${esc(S.client(x.clientId)?.name)}</td><td data-l="Subject">${esc(x.title)}</td>
+        <td data-l="Date">${fdate(x.date)}</td><td data-l="Delivery">${x.deliveryDate ? fdate(x.deliveryDate) : '—'}</td><td data-l="Total (TTC)" class="num"><b>${money(S.quoteTotals(x).total)}</b></td><td data-l="Status">${opill(x.status)}</td>
+        <td class="act"><a class="btn pill-sm" href="#/clients/order/${x.id}">Open</a></td></tr>`).join('')}</tbody></table></div>`
+      : `<p class="empty">${of ? 'No purchase order with this status.' : 'No purchase orders yet — use “Purchase order” on a client card or on a quote.'}</p>`}</section>`;
   const add = () => openClientForm(null);
   $('#addclient', v).onclick = add; const a2 = $('#addclient2', v); if (a2) a2.onclick = add;
   $('#newquote', v).onclick = () => db.clients.length ? openQuoteEditor({ clientId: rows[0]?.c.id || db.clients[0].id }) : toast('Add a client first.', 'err');
   const cs = $('#csearch', v); cs.oninput = debounce(() => { ui.cq = cs.value; viewClients(v); const n = $('#csearch'); n.focus(); n.setSelectionRange(n.value.length, n.value.length); }, 200);
   $$('[data-qf]', v).forEach(b => b.onclick = () => { ui.qf = b.dataset.qf; viewClients(v); });
+  $$('[data-of]', v).forEach(b => b.onclick = () => { ui.of = b.dataset.of; viewClients(v); });
   $$('[data-client]', v).forEach(card => {
     const c = S.client(card.dataset.client);
     $('[data-editclient]', card).onclick = () => openClientForm(c);
     $('[data-delclient]', card).onclick = () => deleteClient(c);
     $('[data-quoteclient]', card).onclick = () => openQuoteEditor({ clientId: c.id });
+    $('[data-orderclient]', card).onclick = () => openQuoteEditor({ clientId: c.id }, 'order');
   });
 }
 
@@ -513,7 +523,7 @@ function openClientForm(c) {
 }
 function deleteClient(c) {
   const u = S.clientUsage(c.id), paid = u.payments.reduce((s, x) => s + x.amount, 0);
-  const linked = [u.projects.length && `${u.projects.length} project${u.projects.length > 1 ? 's' : ''}`, u.payments.length && `${u.payments.length} payment${u.payments.length > 1 ? 's' : ''} (${money(paid)})`, u.quotes.length && `${u.quotes.length} quote${u.quotes.length > 1 ? 's' : ''}`].filter(Boolean);
+  const linked = [u.projects.length && `${u.projects.length} project${u.projects.length > 1 ? 's' : ''}`, u.payments.length && `${u.payments.length} payment${u.payments.length > 1 ? 's' : ''} (${money(paid)})`, u.quotes.length && `${u.quotes.length} quote${u.quotes.length > 1 ? 's' : ''}`, u.orders.length && `${u.orders.length} purchase order${u.orders.length > 1 ? 's' : ''}`].filter(Boolean);
   confirmBox({ title: `Delete “${c.name}”?`, ok: 'Delete client',
     text: linked.length ? `This will also permanently delete <b>${linked.join(', ')}</b> linked to this client. This cannot be undone.` : 'The client will be permanently deleted.',
     run: () => S.removeClient(c.id), done: () => toast(`Client “${c.name}” deleted.`) });
@@ -524,19 +534,27 @@ async function ensureCatalog() {
   if (state.catalogLoaded) return;
   try { const d = await api.list(); Object.assign(state, { products: d.products, categories: d.categories, colors: d.colors || [], catalogLoaded: true }); } catch {}
 }
-function openQuoteEditor(q) {
-  const isNew = !q.id;
-  q = { title: '', type: 'custom', date: S.iso(S.today()), validDays: 30, discount: 0, vat: true, depositPct: 40, notes: '', items: [{ label: '', qty: 1, unit: '' }], ...q };
+/* Quote (devis) and purchase order (bon de commande) share one editor; kind = 'quote' | 'order' */
+function openQuoteEditor(q, kind = 'quote') {
+  const isNew = !q.id, isOrder = kind === 'order';
+  q = { title: '', type: 'custom', date: S.iso(S.today()), validDays: 30, discount: 0, vat: true, depositPct: 40, notes: '', items: [{ label: '', qty: 1, unit: '' }],
+    paymentMethod: 'Bank transfer', deliveryAddress: '', deliveryDate: '', clientIce: '', ...q };
+  if (isOrder && !q.deliveryAddress) { const c0 = S.client(q.clientId); if (c0) q.deliveryAddress = [c0.address, c0.city].filter(Boolean).join(', '); }
   const blank = { label: '', qty: 1, unit: '', productSlug: '', image: '', description: '', material: '', dimensions: '', color: '' };
   const db = S.get();
   const m = openModal(`<form id="qform" class="pform qform" novalidate>
-    <div class="m-head"><h2>${isNew ? 'New quote' : 'Edit quote ' + esc(q.number)}</h2><button type="button" class="icon-btn" data-close aria-label="Close">${ico('x')}</button></div>
+    <div class="m-head"><h2>${isOrder ? (isNew ? 'New purchase order' : 'Edit purchase order ' + esc(q.number)) : (isNew ? 'New quote' : 'Edit quote ' + esc(q.number))}</h2><button type="button" class="icon-btn" data-close aria-label="Close">${ico('x')}</button></div>
     <div class="m-body single"><div class="fields">
       <label>Client *<select name="clientId">${db.clients.map(c => `<option value="${c.id}" ${q.clientId === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label>
       <label>Type<select name="type">${Object.entries(S.TYPE_LABEL).map(([k, l]) => `<option value="${k}" ${q.type === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
       <label class="full">Subject<input name="title" maxlength="140" value="${esc(q.title)}" placeholder="e.g. Custom living room set"></label>
       <label>Date<input name="date" type="date" value="${esc(q.date)}"></label>
-      <label>Valid for (days)<input name="validDays" type="number" min="1" max="365" value="${esc(q.validDays)}"></label>
+      ${isOrder ? `<label>Delivery date<input name="deliveryDate" type="date" value="${esc(q.deliveryDate || '')}"></label>
+      <label class="full">Delivery address<input name="deliveryAddress" maxlength="300" value="${esc(q.deliveryAddress)}" placeholder="Address where the order is delivered"></label>
+      <label>Payment method<select name="paymentMethod">${S.PAY_METHODS.map(x => `<option value="${x}" ${q.paymentMethod === x ? 'selected' : ''}>${x}</option>`).join('')}</select></label>
+      <label>Client ICE<input name="clientIce" maxlength="40" value="${esc(q.clientIce)}" placeholder="For company clients"></label>`
+      : `<label>Valid for (days)<input name="validDays" type="number" min="1" max="365" value="${esc(q.validDays)}"></label>`}
+      ${isOrder && q.quoteId ? `<p class="muted small full">${ico('file')} From quote ${esc(S.quote(q.quoteId)?.number || '')} — change quantities, colours or lines as the client wishes. Use “Split” to divide a line (e.g. 3 black + 1 white).</p>` : ''}
     </div>
     <div class="q-lines"><div class="q-lines-head"><span></span><span>Product or service</span><span>Qty</span><span>Unit price (MAD, excl. VAT)</span><span class="num">Line total</span><span></span></div>
       <div id="qlines"></div>
@@ -566,10 +584,13 @@ function openQuoteEditor(q) {
     <div class="ql-more">
       <textarea class="ql-desc" rows="2" maxlength="1000" placeholder="Description shown on the quote" aria-label="Description">${esc(it.description)}</textarea>
       <div class="ql-specs"><input class="ql-dim" maxlength="200" value="${esc(it.dimensions)}" placeholder="Dimensions" aria-label="Dimensions"><input class="ql-mat" maxlength="200" value="${esc(it.material)}" placeholder="Material" aria-label="Material"><input class="ql-col" list="qcolors" maxlength="200" value="${esc(it.color)}" placeholder="Colour" aria-label="Colour">
-        ${it.image ? `<button type="button" class="link-btn ql-noimg">Remove photo</button>` : ''}</div>
+        <span class="ql-tools"><button type="button" class="link-btn ql-split" title="Split this line in two (e.g. 3 black + 1 white)">Split</button>${it.image ? `<button type="button" class="link-btn ql-noimg">Remove photo</button>` : ''}</span></div>
     </div></div>`; };
   lines.innerHTML = q.items.map(lineRow).join('');
-  const read = () => ({ clientId: f.clientId.value, type: f.type.value, title: f.title.value, date: f.date.value, validDays: f.validDays.value, discount: f.discount.value, depositPct: f.depositPct.value, vat: f.vat.checked, notes: f.notes.value,
+  const lineData = r => ({ label: $('.ql-label', r).value, qty: $('.ql-qty', r).value, unit: $('.ql-unit', r).value, productSlug: r.dataset.slug || '', image: r.dataset.image || '',
+      description: $('.ql-desc', r).value, dimensions: $('.ql-dim', r).value, material: $('.ql-mat', r).value, color: $('.ql-col', r).value });
+  const read = () => ({ clientId: f.clientId.value, type: f.type.value, title: f.title.value, date: f.date.value, discount: f.discount.value, depositPct: f.depositPct.value, vat: f.vat.checked, notes: f.notes.value,
+    ...(isOrder ? { quoteId: q.quoteId || null, deliveryDate: f.deliveryDate.value, deliveryAddress: f.deliveryAddress.value, paymentMethod: f.paymentMethod.value, clientIce: f.clientIce.value } : { validDays: f.validDays.value }),
     items: $$('.q-line', lines).map(r => ({ label: $('.ql-label', r).value, qty: $('.ql-qty', r).value, unit: $('.ql-unit', r).value, productSlug: r.dataset.slug || '', image: r.dataset.image || '',
       description: $('.ql-desc', r).value, dimensions: $('.ql-dim', r).value, material: $('.ql-mat', r).value, color: $('.ql-col', r).value })) });
   /* picking a catalogue product fills the photo, description, details and price of the line */
@@ -579,7 +600,7 @@ function openQuoteEditor(q) {
     $('.ql-thumb', r).innerHTML = thumb(r.dataset.image);
     $('.ql-desc', r).value = p.description || ''; $('.ql-dim', r).value = p.dimensions || ''; $('.ql-mat', r).value = p.material || ''; $('.ql-col', r).value = p.color || '';
     $('.ql-unit', r).value = p.price ?? '';
-    if (!$('.ql-noimg', r) && r.dataset.image) $('.ql-specs', r).insertAdjacentHTML('beforeend', '<button type="button" class="link-btn ql-noimg">Remove photo</button>');
+    if (!$('.ql-noimg', r) && r.dataset.image) $('.ql-tools', r).insertAdjacentHTML('beforeend', '<button type="button" class="link-btn ql-noimg">Remove photo</button>');
   };
   const calc = () => {
     const d = read(), t = S.quoteTotals(d);
@@ -593,19 +614,30 @@ function openQuoteEditor(q) {
   lines.addEventListener('click', e => {
     const r = e.target.closest('.q-line'); if (!r) return;
     if (e.target.closest('.ql-noimg')) { r.dataset.image = ''; $('.ql-thumb', r).innerHTML = thumb(''); e.target.closest('.ql-noimg').remove(); return; }
+    if (e.target.closest('.ql-split')) {   // 4 tables → 3 + 1: the new line keeps the product, the colour is left empty to choose
+      const d = lineData(r), n = +d.qty || 1, part = n >= 2 ? 1 : n;
+      if (n >= 2) $('.ql-qty', r).value = Math.round((n - 1) * 100) / 100;
+      r.insertAdjacentHTML('afterend', lineRow({ ...d, qty: part, color: '' }));
+      const nr = r.nextElementSibling; nr.classList.add('ql-new'); $('.ql-col', nr).focus(); calc(); return;
+    }
     if (!e.target.closest('.ql-del')) return;
     if ($$('.q-line', lines).length > 1) r.remove(); else r.outerHTML = lineRow(blank);
     calc();
   });
   $('#addline', m).onclick = () => { lines.insertAdjacentHTML('beforeend', lineRow(blank)); $$('.ql-label', lines).pop().focus(); calc(); };
   f.addEventListener('input', e => { if (!lines.contains(e.target)) calc(); });
+  if (isOrder) f.clientId.addEventListener('change', () => { const c = S.client(f.clientId.value); if (c && !f.deliveryAddress.dataset.touched) f.deliveryAddress.value = [c.address, c.city].filter(Boolean).join(', '); });
+  if (isOrder) f.deliveryAddress.addEventListener('input', () => { f.deliveryAddress.dataset.touched = '1'; });
   calc();
   ensureCatalog().then(() => { if (!m.isConnected) return; $('#qproducts', m).innerHTML = state.products.map(p => `<option value="${esc(p.name)}">${esc(catName(p.category))} · ${money(p.price)}</option>`).join(''); $('#qcolors', m).innerHTML = state.colors.map(c => `<option value="${esc(c.name)}"></option>`).join(''); if (state.products.length) $('#catalog-hint', m).textContent = 'Tip: choose a catalog product to fill its photo, description, details and price.'; });
   (isNew ? f.title : f.title).focus();
   f.onsubmit = async e => {
     e.preventDefault(); const btn = f.querySelector('[type=submit]'), err = $('#qerr', m);
     btn.disabled = true; err.textContent = '';
-    try { const id = await S.saveQuote({ ...read(), id: q.id }); closeModal(); toast(isNew ? 'Quote created as a draft.' : 'Quote saved.'); location.hash = '#/clients/quote/' + id; }
+    try {
+      if (isOrder) { const id = await S.saveOrder({ ...read(), id: q.id }); closeModal(); toast(isNew ? 'Purchase order created as a draft.' : 'Purchase order saved.'); location.hash = '#/clients/order/' + id; }
+      else { const id = await S.saveQuote({ ...read(), id: q.id }); closeModal(); toast(isNew ? 'Quote created as a draft.' : 'Quote saved.'); location.hash = '#/clients/quote/' + id; }
+    }
     catch (x) { if (x.message !== 'auth') err.textContent = x.message; btn.disabled = false; }
   };
 }
@@ -625,6 +657,7 @@ function viewQuote(id) {
       <div class="seg" role="radiogroup" aria-label="Quote status">${Object.entries(QS).map(([k, l]) => `<button role="radio" aria-checked="${q.status === k}" class="${q.status === k ? 'on' : ''}" data-qstatus="${k}" ${locked ? 'disabled' : ''}>${l}</button>`).join('')}</div>
       <div class="row-gap">
         ${locked ? `<a class="btn outline" href="#/projects/${q.projectId}">${ico('arrow')}Open project</a>` : `<button class="btn outline" id="qedit">${ico('edit')}Edit</button><button class="btn primary" id="qconvert">${ico('check')}Accept & create project</button>`}
+        <button class="btn outline" id="qorder">${ico('file')}Purchase order</button>
         <button class="btn outline" id="qprint">${ico('download')}Print / PDF</button>
         <button class="icon-btn danger" id="qdel" title="Delete quote" aria-label="Delete quote">${ico('trash')}</button>
       </div>
@@ -651,11 +684,74 @@ function viewQuote(id) {
   $('#qprint', v).onclick = () => { document.body.classList.add('print-quote'); window.print(); };
   $('#qdel', v).onclick = () => confirmBox({ title: `Delete quote ${q.number}?`, text: locked ? 'The quote will be deleted. The project created from it is kept.' : 'The quote will be permanently deleted.', ok: 'Delete quote', run: () => S.removeQuote(q.id), done: () => { toast(`Quote ${q.number} deleted.`); location.hash = '#/clients'; } });
   const ed = $('#qedit', v); if (ed) ed.onclick = () => openQuoteEditor(q);
+  $('#qorder', v).onclick = () => openOrderFromQuote(q);
   const cv = $('#qconvert', v); if (cv) cv.onclick = () => confirmBox({ title: 'Accept this quote?', ok: 'Accept & create project',
     text: `The quote will be marked as accepted and a new project “${esc(q.title)}” (${money(t.total)}) will be created for ${esc(c.name || '')}.`,
     run: async () => { ui.newProject = await S.convertQuote(q.id); }, done: () => { toast('Project created from the quote.'); location.hash = '#/projects/' + ui.newProject; } });
 }
 window.addEventListener('afterprint', () => document.body.classList.remove('print-quote'));
+
+/* ---------------- purchase orders (bons de commande) ---------------- */
+const OS = S.ORDER_STATUS;
+const opill = st => `<span class="status o-${st}">${OS[st]}</span>`;
+const FR_METHOD = { 'Bank transfer': 'Virement bancaire', Cheque: 'Chèque', Card: 'Carte bancaire', Cash: 'Espèces' };
+/* start a purchase order from a quote: same client, lines and conditions, everything stays editable */
+function openOrderFromQuote(q) {
+  const existing = S.get().orders.filter(o => o.quoteId === q.id);
+  const go = () => openQuoteEditor({ clientId: q.clientId, quoteId: q.id, title: q.title, type: q.type, discount: q.discount, vat: q.vat, depositPct: q.depositPct, notes: q.notes, items: q.items.map(({ id, ...i }) => i) }, 'order');
+  if (!existing.length) return go();
+  confirmBox({ title: 'This quote already has a purchase order', ok: 'Create another one', text: `Purchase order ${existing.map(o => `<a href="#/clients/order/${o.id}">${esc(o.number)}</a>`).join(', ')} already comes from this quote.`, run: async () => {}, done: () => setTimeout(go, 300) });   // wait for the confirm box to close
+}
+function viewOrder(id) {
+  const v = $('#view'), o = S.order(id);
+  if (!o) { v.innerHTML = `${titleRow('Purchase order not found')}<p><a class="btn outline" href="#/clients">${ico('back')}Back to clients</a></p>`; return; }
+  const c = S.client(o.clientId) || {}, co = S.get().company || {}, t = S.quoteTotals(o), q = o.quoteId ? S.quote(o.quoteId) : null;
+  const locked = o.status === 'delivered' || o.status === 'cancelled';
+  const legal = [co.ice && `ICE : ${co.ice}`, co.rc && `RC : ${co.rc}`, co.if_number && `IF : ${co.if_number}`, co.patente && `Patente : ${co.patente}`].filter(Boolean).join(' · ');
+  const qtyTotal = o.items.reduce((s, i) => s + (+i.qty || 0), 0);
+  v.innerHTML = `<a class="back-link" href="#/clients">${ico('back')} Clients & quotes</a>
+    <div class="title-row detail-title"><div><p class="lbl">Purchase order · ${esc(c.name || '')}</p><h1>${esc(o.number)}</h1></div>${opill(o.status)}</div>
+    <div class="quote-bar card white">
+      <div class="seg" role="radiogroup" aria-label="Order status">${Object.entries(OS).map(([k, l]) => `<button role="radio" aria-checked="${o.status === k}" class="${o.status === k ? 'on' : ''}" data-ostatus="${k}">${l}</button>`).join('')}</div>
+      <div class="row-gap">
+        ${q ? `<a class="btn outline" href="#/clients/quote/${q.id}">${ico('file')}Quote ${esc(q.number)}</a>` : ''}
+        ${locked ? '' : `<button class="btn outline" id="oedit">${ico('edit')}Edit</button>`}
+        <button class="btn outline" id="oprint">${ico('download')}Print / PDF</button>
+        <button class="icon-btn danger" id="odel" title="Delete purchase order" aria-label="Delete purchase order">${ico('trash')}</button>
+      </div>
+    </div>
+    ${!co.ice && !co.address ? `<p class="hint-bar">${ico('info')}<span>Add your company address, ICE and RC in <a href="#/settings">Settings</a> so they appear on the quote.</span></p>` : ''}
+    <article class="quote-doc order-doc" lang="fr">
+      <header class="qd-head">
+        <div class="qd-co"><img src="${A}luxor-logo-gold.webp" alt="${esc(co.name || 'Luxor Création')}"><div><b>${esc(co.name || 'Luxor Création')}</b>${co.tagline ? `<span>${esc(co.tagline)}</span>` : ''}${co.address || co.city ? `<span>${esc([co.address, co.city].filter(Boolean).join(', '))}</span>` : ''}${co.phone ? `<span>Tél. ${esc(co.phone)}</span>` : ''}${co.email ? `<span>${esc(co.email)}</span>` : ''}${co.ice ? `<span>ICE : ${esc(co.ice)}</span>` : ''}</div></div>
+        <div class="qd-title"><h2>BON DE COMMANDE</h2><dl><dt>N°</dt><dd>${esc(o.number)}</dd><dt>Date</dt><dd>${frDate(o.date)}</dd>${q ? `<dt>Réf. devis</dt><dd>${esc(q.number)}</dd>` : ''}</dl></div>
+      </header>
+      <section class="qd-parties">
+        <div class="qd-client"><p class="qd-lbl">Client</p><b>${esc(c.name || '')}</b>${c.address ? `<span>${esc(c.address)}</span>` : ''}${c.city ? `<span>${esc(c.city)}</span>` : ''}${c.phone ? `<span>Tél. ${esc(c.phone)}</span>` : ''}${c.email ? `<span>${esc(c.email)}</span>` : ''}${o.clientIce ? `<span>ICE : ${esc(o.clientIce)}</span>` : ''}</div>
+        <div class="qd-object"><p class="qd-lbl">Livraison</p><b>${esc(o.title)}</b><span>${FR_TYPE[o.type]}</span><span>Adresse : ${o.deliveryAddress ? esc(o.deliveryAddress) : 'à préciser'}</span><span>Date prévue : ${o.deliveryDate ? frDate(o.deliveryDate) : 'à convenir'}</span></div>
+      </section>
+      <div class="qd-table-wrap"><table class="qd-table"><thead><tr><th>Désignation</th><th>Coloris / finition</th><th class="num">Qté</th><th class="num">P.U. HT</th><th class="num">Total HT</th></tr></thead>
+        <tbody>${o.items.map((i, n) => { const spec = [i.dimensions && `Dimensions : ${esc(i.dimensions)}`, i.material && `Matière : ${esc(i.material)}`].filter(Boolean).join(' · ');
+          return `<tr><td><div class="qd-item">${i.image ? `<img class="qd-img" src="${esc(assetSrc(i.image))}" alt="${esc(i.label)}" onerror="this.remove()">` : ''}<div><b>${esc(i.label)}</b>${i.description ? `<p class="qd-desc">${esc(i.description).replace(/\n/g, '<br>')}</p>` : ''}${spec ? `<p class="qd-spec">${spec}</p>` : ''}</div></div></td>
+            <td class="qd-color">${i.color ? esc(i.color) : '—'}</td><td class="num">${String(i.qty).replace('.', ',')}</td><td class="num">${frMoney(i.unit)}</td><td class="num">${frMoney(t.lines[n])}</td></tr>`; }).join('')}</tbody>
+        <tfoot><tr><td colspan="2">Nombre d’articles</td><td class="num">${String(qtyTotal).replace('.', ',')}</td><td colspan="2"></td></tr></tfoot></table></div>
+      <section class="qd-sum">
+        <div class="qd-notes"><p class="qd-lbl">Conditions de règlement</p><p>Mode de règlement : <b>${FR_METHOD[o.paymentMethod] || esc(o.paymentMethod)}</b></p>
+          ${o.depositPct ? `<p>Acompte de <b>${o.depositPct} %</b> à la commande, soit <b>${frMoney(t.deposit)}</b>. Solde de <b>${frMoney(t.total - t.deposit)}</b> à la livraison.</p>` : '<p>Règlement total à la livraison.</p>'}
+          ${co.bank ? `<p>RIB : ${esc(co.bank)}</p>` : ''}${o.notes ? `<p class="qd-lbl">Conditions particulières</p><p>${esc(o.notes)}</p>` : ''}</div>
+        <dl class="qd-totals"><dt>Total HT</dt><dd>${frMoney(t.subtotal)}</dd>${t.discount ? `<dt>Remise ${String(o.discount).replace('.', ',')} %</dt><dd>− ${frMoney(t.discount)}</dd><dt>Net HT</dt><dd>${frMoney(t.net)}</dd>` : ''}${o.vat ? `<dt>TVA 20 %</dt><dd>${frMoney(t.vat)}</dd>` : '<dt>TVA</dt><dd>Non applicable</dd>'}<dt class="tot">Total ${o.vat ? 'TTC' : 'HT'}</dt><dd class="tot">${frMoney(t.total)}</dd>${o.depositPct ? `<dt>Acompte à la commande</dt><dd>${frMoney(t.deposit)}</dd><dt>Reste à payer</dt><dd>${frMoney(t.total - t.deposit)}</dd>` : ''}</dl>
+      </section>
+      <section class="qd-signs">
+        <div><p class="qd-lbl">Le client</p><p class="qd-small">Date, signature et mention manuscrite « Bon pour commande ».</p><div class="qd-box"></div></div>
+        <div><p class="qd-lbl">${esc(co.name || 'Luxor Création')}</p><p class="qd-small">Cachet et signature.</p><div class="qd-box"></div></div>
+      </section>
+      ${legal ? `<footer class="qd-foot">${esc(co.name || 'Luxor Création')} · ${esc(legal)}</footer>` : ''}
+    </article>`;
+  $$('[data-ostatus]', v).forEach(b => b.onclick = () => { if (b.dataset.ostatus !== o.status) busy(b, S.setOrderStatus(o.id, b.dataset.ostatus), `Purchase order marked as ${OS[b.dataset.ostatus].toLowerCase()}.`); });
+  $('#oprint', v).onclick = () => { document.body.classList.add('print-quote'); window.print(); };
+  $('#odel', v).onclick = () => confirmBox({ title: `Delete purchase order ${o.number}?`, text: 'The purchase order will be permanently deleted.', ok: 'Delete purchase order', run: () => S.removeOrder(o.id), done: () => { toast(`Purchase order ${o.number} deleted.`); location.hash = '#/clients'; } });
+  const ed = $('#oedit', v); if (ed) ed.onclick = () => openQuoteEditor(o, 'order');
+}
 
 /* ---------------- payments ---------------- */
 function viewPayments(v) {

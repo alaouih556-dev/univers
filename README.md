@@ -43,6 +43,8 @@ Produits, catégories, couleurs et photos sont stockés dans **Supabase** (proje
 Clients, projets (pièces, étapes, historique), paiements, messages, devis et historique de chiffre d'affaires sont dans Supabase, **visibles uniquement par les administrateurs** (RLS).
 
 - `backend/supabase/admin_schema.sql` : tables + règles métier côté base (numérotation des devis `DEV-AAAA-NNN`, paiement refusé s'il dépasse le reste à payer, historique automatique des changements de statut, `convert_quote()` qui transforme un devis accepté en projet, coordonnées de l'entreprise imprimées sur les devis).
+- `backend/supabase/quote_items_details.sql` : photo, description, dimensions, matière et coloris sur chaque ligne de devis.
+- `backend/supabase/orders.sql` : **bons de commande** (`BC-AAAA-NNN`). Créés depuis une fiche client ou depuis un devis (lignes reprises puis modifiables : quantités, coloris, bouton « Diviser » pour transformer 4 tables noires en 3 noires + 1 blanche). Statuts : brouillon, confirmé, livré, annulé (livré/annulé = verrouillé). Document imprimable : adresse et date de livraison, ICE client, coloris par ligne, acompte et reste à payer, double signature (client « Bon pour commande » + cachet de l'entreprise).
 - `backend/supabase/admin_seed.sql` : données d'exemple (marquées `sample`), supprimables depuis Admin → Settings → « Remove sample data ».
 
 ## Frontend / backend

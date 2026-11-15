@@ -408,6 +408,7 @@ section.card+section.card{margin-top:18px}
 .cc-act .icon-btn{width:34px;height:34px;background:transparent}
 .card.sable .cc-act .icon-btn,.card.pastel .cc-act .icon-btn{border-color:rgba(47,79,70,.2);color:var(--vert)}
 .cc-quote{align-self:flex-start;margin-top:14px}
+.cc-btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}.cc-btns .cc-quote{margin-top:0}
 .card.sable .btn.pill-sm,.card.pastel .btn.pill-sm{border-color:rgba(47,79,70,.25);color:var(--vert)}
 .card.sable .btn.pill-sm:hover,.card.pastel .btn.pill-sm:hover{background:var(--vert);color:var(--ivoire)}
 .cc-done{position:absolute;right:22px;bottom:22px}
@@ -424,6 +425,11 @@ section.card+section.card{margin-top:18px}
 [data-theme=dark] .q-sent{color:var(--or)}
 .q-accepted{background:var(--pastel);color:var(--vert)}
 .q-refused{background:var(--neg-bg);color:var(--neg-tx)}
+.o-draft{background:var(--soft);color:var(--text);border:1px solid var(--line)}
+.o-confirmed{background:rgba(212,175,55,.18);color:#86691a}
+[data-theme=dark] .o-confirmed{color:var(--or)}
+.o-delivered{background:var(--pastel);color:var(--vert)}
+.o-cancelled{background:var(--neg-bg);color:var(--neg-tx)}
 .modal-card.wide{width:min(980px,100%)}
 .m-body.single{display:block}
 .q-lines{margin:18px 0 6px;padding:16px;border-radius:20px;background:var(--bg);border:1px solid var(--line)}
@@ -490,6 +496,14 @@ section.card+section.card{margin-top:18px}
 .qd-sign{display:grid;grid-template-columns:1fr 280px;gap:24px;margin-top:28px;align-items:start}
 .qd-small{font-size:12px;color:#4a635b;margin:0}
 .qd-box{height:110px;border:1.5px dashed #C9B99B;border-radius:12px}
+.qd-signs{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:28px;break-inside:avoid;page-break-inside:avoid}
+.qd-signs .qd-box{margin-top:8px}
+.order-doc .qd-title h2{font-size:24px;letter-spacing:.08em}
+.qd-color{font-weight:600;white-space:nowrap}
+.qd-table tfoot td{padding:10px 12px;font-size:12px;font-weight:600;color:#4a635b}
+.ql-tools{display:flex;gap:12px;align-items:center;white-space:nowrap}
+.q-line.ql-new{animation:qlNew 1.2s ease}
+@keyframes qlNew{from{box-shadow:0 0 0 3px var(--or)}to{box-shadow:0 0 0 0 transparent}}
 .qd-foot{margin-top:28px;padding-top:12px;border-top:1px solid #E9DDC8;text-align:center;font-size:11.5px;color:#4a635b}
 @media (max-width:760px){
   .tb-clients{grid-template-columns:1fr}
@@ -504,7 +518,7 @@ section.card+section.card{margin-top:18px}
   .ql-more{margin-left:0}
   .ql-specs{grid-template-columns:1fr}
   .q-bottom{grid-template-columns:1fr}
-  .qd-parties,.qd-sum,.qd-sign{grid-template-columns:1fr}
+  .qd-parties,.qd-sum,.qd-sign,.qd-signs{grid-template-columns:1fr}
   .qd-title{text-align:left}
   .qd-co img{height:64px}
 }
