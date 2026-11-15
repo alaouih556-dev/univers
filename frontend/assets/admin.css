@@ -180,12 +180,12 @@ body.is-login{background:var(--bg)}
 .gauge-txt .sub{margin:0 0 16px;font-size:15.5px}
 .gauge-legend{display:flex;gap:18px;flex-wrap:wrap;font-size:13.5px}
 .gauge-legend span{display:inline-flex;align-items:center;gap:7px}
-.lg{display:inline-block;width:14px;height:14px;border-radius:5px}
-.lg.gold{background:var(--gold)}
-.lg.track{background:rgba(249,247,242,.2)}
-.lg.hatch{background:repeating-linear-gradient(45deg,var(--sable-line) 0 3px,var(--sable-soft) 3px 7px)}
-.lg.dash{border:1.6px dashed var(--pastel)}
-.lg.avg{height:0;width:18px;border-top:2px dashed var(--text);border-radius:0;opacity:.7}
+.lgd{display:inline-block;width:14px;height:14px;border-radius:5px}
+.lgd.gold{background:var(--gold)}
+.lgd.track{background:rgba(249,247,242,.2)}
+.lgd.hatch{background:repeating-linear-gradient(45deg,var(--sable-line) 0 3px,var(--sable-soft) 3px 7px)}
+.lgd.dash{border:1.6px dashed var(--pastel)}
+.lgd.avg{height:0;width:18px;border-top:2px dashed var(--text);border-radius:0;opacity:.7}
 
 /* revenue */
 .rev-card{margin-bottom:18px}
@@ -433,7 +433,7 @@ section.card+section.card{margin-top:18px}
 .q-totals dd.tot{font-size:20px}
 .quote-bar{display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:16px;padding:14px 16px}
 .quote-bar .seg button:disabled{opacity:.5;cursor:not-allowed}
-.hint-bar{display:flex;align-items:center;gap:8px;margin:0 0 16px;padding:12px 16px;border-radius:16px;background:rgba(212,175,55,.12);font-size:14px}
+.hint-bar{display:flex;align-items:flex-start;gap:10px;margin:0 0 16px;padding:12px 16px;border-radius:16px;background:rgba(212,175,55,.12);font-size:14px}
 .hint-bar a{font-weight:700}
 
 /* the quote document (French, printable) */
@@ -446,7 +446,7 @@ section.card+section.card{margin-top:18px}
 .qd-co span,.qd-client span,.qd-object span{color:#4a635b;font-size:13px}
 .qd-title{text-align:right}
 .qd-title h2{margin:0 0 8px;font-size:30px;letter-spacing:.12em;color:#2F4F46}
-.qd-title dl{display:grid;grid-template-columns:auto auto;gap:3px 12px;margin:0;font-size:13px}
+.qd-title dl{display:grid;grid-template-columns:max-content max-content;gap:3px 14px;margin:0;font-size:13px}
 .qd-title dt{color:#4a635b}.qd-title dd{margin:0;font-weight:700}
 .qd-parties{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:22px 0}
 .qd-client,.qd-object{padding:14px 16px;border-radius:14px;background:#F9F7F2;border:1px solid #E9DDC8}
@@ -533,6 +533,14 @@ section.card+section.card{margin-top:18px}
 .toast.err{background:var(--red)}.toast.err .i{color:#fff}
 .toast.out{opacity:0;transform:translateY(8px)}
 
+/* grid/flex children may shrink below their content (prevents cards wider than the screen) */
+.kpis>*,.split2>*,.detail-grid>*,.col>*,.inbox>*,.settings>*,.client-grid>*,.mini-stats>*,.q-bottom>*{min-width:0}
+.settings .card>.fields{width:100%}
+.hint-bar .i{margin-top:1px}
+.qd-table-wrap{overflow-x:auto;margin-bottom:18px}
+.qd-table-wrap .qd-table{margin-bottom:0}
+.nav-pill{scroll-behavior:smooth}
+
 /* ---------- responsive ---------- */
 @media (max-width:1080px){
   .toolbar{grid-template-columns:1fr auto}
@@ -575,6 +583,48 @@ section.card+section.card{margin-top:18px}
   .ptbl td.act{justify-content:flex-end;padding-top:10px}
   .ptbl td.act .btn{width:100%}
   .ptbl tbody tr:hover{background:none}
+  /* --- phone polish --- */
+  .navbar{padding-top:4px}
+  .nav-pill{display:flex;width:100%;-webkit-mask-image:linear-gradient(90deg,transparent 0,#000 14px,#000 calc(100% - 22px),transparent);mask-image:linear-gradient(90deg,transparent 0,#000 14px,#000 calc(100% - 22px),transparent)}
+  .nav-pill a{height:38px;padding:0 15px;font-size:14px}
+  .title-row{margin-bottom:14px}
+  .title-row h1{font-size:34px}
+  .kpi-v{font-size:32px;white-space:nowrap}
+  .kpi-top{gap:10px}
+  .kpi-chart .mini{width:84px;height:auto}
+  .kpi-chart .ring{width:58px;height:58px}
+  .gauge-card{padding:18px}
+  .rev-card h2{font-size:24px}
+  .legend{gap:8px 14px;font-size:12px}
+  .donut-info .big{font-size:40px}
+  .legend-list{min-width:0}
+  .up-list a{gap:10px;padding:8px 4px}
+  .up-list .status{font-size:11.5px;height:24px;padding:0 9px}
+  .mini-stats,.mini-stats.four{grid-template-columns:1fr 1fr;gap:12px}
+  .mini-stats>.card:first-child:nth-last-child(3){grid-column:1/-1}
+  .mini-stats .card{padding:16px}
+  .mini-stats .kpi-v{font-size:22px;white-space:nowrap}
+  .detail-grid .col.side{order:-1}
+  .detail-title h1{font-size:30px}
+  .popover{position:fixed;left:12px;right:12px;top:74px;width:auto;max-height:calc(100vh - 160px);overflow:auto}
+  .menu{left:auto;width:240px}
+  .quote-bar{padding:12px}
+  .quote-bar .seg{width:100%}
+  .quote-bar .row-gap{width:100%}
+  .quote-bar .row-gap .btn{flex:1}
+  .quote-doc{font-size:13px;padding:18px}
+  .qd-table{font-size:12px;min-width:430px}
+  .qd-table th,.qd-table td{padding:8px}
+  .qd-title h2{font-size:24px}
+  .login-card{padding:30px 22px 22px;border-radius:24px}
+  .login-logo{height:92px}
+  .m-head{padding:18px 18px 8px}.m-body{padding:10px 18px 4px}.m-foot{padding:14px 18px 18px}.pform .form-err{padding:0 18px}
+  .modal{padding:10px;align-items:end}
+  .modal-card{max-height:calc(100vh - 20px);border-radius:24px}
+  .m-foot{position:sticky;bottom:0;background:var(--card);border-top:1px solid var(--line)}
+  .m-foot .btn{flex:1}
+  .client-grid{grid-template-columns:1fr}
+  .ptbl td[data-l="Price (MAD)"] .price-form input{width:110px}
   .dock{bottom:14px}
   .toasts{left:16px;right:16px;bottom:80px}
 }

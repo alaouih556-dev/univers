@@ -228,7 +228,7 @@ async function startApp() {
   }
   document.body.className = 'is-app';
   app.innerHTML = `<header class="topbar">
-      <a class="brand" href="#/dashboard" aria-label="Univers — dashboard">${logoMark}<span>Univers</span></a>
+      <a class="brand" href="#/dashboard" aria-label="Univers — dashboard" translate="no">${logoMark}<span>Univers</span></a>
       <div class="top-r">
         <a class="icon-btn ghost" href="../" target="_blank" rel="noopener" title="Open the website" aria-label="Open the website">${ico('site')}</a>
         <div class="pop-wrap"><button class="icon-btn ghost bell" id="bell" aria-haspopup="true" aria-expanded="false" aria-label="Notifications">${ico('bell')}<i class="dot" id="belldot"></i></button><div class="popover" id="notifs" hidden></div></div>
@@ -377,12 +377,12 @@ function viewDashboard(v) {
         <p class="lbl">Projects finished ${infoTip('Finished projects out of all projects.')}</p>
         <h2>${m.finished} of ${m.total} projects finished</h2>
         <p class="sub">${gaugeSentence(m)}</p>
-        <div class="gauge-legend"><span><i class="lg gold"></i>Finished ${Math.round(m.finished / (m.total || 1) * 100)}%</span><span><i class="lg track"></i>Remaining ${m.total - m.finished}</span></div>
+        <div class="gauge-legend"><span><i class="lgd gold"></i>Finished ${Math.round(m.finished / (m.total || 1) * 100)}%</span><span><i class="lgd track"></i>Remaining ${m.total - m.finished}</span></div>
       </div>
     </section>
     <section class="card white rev-card">
       <div class="card-head"><div><p class="lbl">Monthly revenue ${infoTip('Payments received each month, in MAD.')}</p><h2>${money(m.revenue[m.M].value)} <small class="muted">this month</small></h2></div>
-        <div class="legend"><span><i class="lg hatch"></i>Past months</span><span><i class="lg gold"></i>Current month</span><span><i class="lg dash"></i>Upcoming (last year)</span><span><i class="lg avg"></i>Average</span></div></div>
+        <div class="legend"><span><i class="lgd hatch"></i>Past months</span><span><i class="lgd gold"></i>Current month</span><span><i class="lgd dash"></i>Upcoming (last year)</span><span><i class="lgd avg"></i>Average</span></div></div>
       <div class="rev-chart" id="revchart"></div>
     </section>
     <section class="split2">
@@ -420,7 +420,7 @@ function upcomingDeliveries() {
 }
 function drawRevenue() {
   const el = $('#revchart'); if (!el) return;
-  const m = S.metrics(), w = Math.max(320, el.clientWidth), h = w < 560 ? 220 : 280;
+  const m = S.metrics(), w = Math.max(240, Math.floor(el.clientWidth)), h = w < 560 ? 220 : 280;
   el.innerHTML = CH.revenueBars(m.revenue, m.revenueAvg, { w, h });
   const tip = $('#tip');
   $$('.bar', el).forEach(g => {
@@ -614,7 +614,7 @@ function openQuoteEditor(q) {
     <div class="m-foot"><button type="button" class="btn outline" data-close>Cancel</button><button type="submit" class="btn primary">${isNew ? 'Create quote' : 'Save quote'}</button></div></form>`);
   m.querySelector('.modal-card').classList.add('wide');
   const f = $('#qform', m), lines = $('#qlines', m);
-  const lineRow = it => `<div class="q-line"><input class="ql-label" list="qproducts" maxlength="200" value="${esc(it.label)}" placeholder="Piece or service" aria-label="Description"><input class="ql-qty" type="number" min="0.01" step="0.01" value="${esc(it.qty)}" aria-label="Quantity"><input class="ql-unit" type="number" min="0" step="1" value="${esc(it.unit)}" aria-label="Unit price"><span class="ql-total num"></span><button type="button" class="icon-btn ghost ql-del" aria-label="Remove line">${ico('x')}</button></div>`;
+  const lineRow = it => `<div class="q-line"><input class="ql-label" list="qproducts" maxlength="200" value="${esc(it.label)}" placeholder="Piece or service" aria-label="Description"><input class="ql-qty" type="number" min="0.01" step="0.01" value="${esc(it.qty)}" placeholder="Qty" aria-label="Quantity"><input class="ql-unit" type="number" min="0" step="1" value="${esc(it.unit)}" placeholder="Price" aria-label="Unit price"><span class="ql-total num"></span><button type="button" class="icon-btn ghost ql-del" aria-label="Remove line">${ico('x')}</button></div>`;
   lines.innerHTML = q.items.map(lineRow).join('');
   const read = () => ({ clientId: f.clientId.value, type: f.type.value, title: f.title.value, date: f.date.value, validDays: f.validDays.value, discount: f.discount.value, depositPct: f.depositPct.value, vat: f.vat.checked, notes: f.notes.value,
     items: $$('.q-line', lines).map(r => ({ label: $('.ql-label', r).value, qty: $('.ql-qty', r).value, unit: $('.ql-unit', r).value })) });
@@ -660,7 +660,7 @@ function viewQuote(id) {
         <button class="icon-btn danger" id="qdel" title="Delete quote" aria-label="Delete quote">${ico('trash')}</button>
       </div>
     </div>
-    ${!co.ice && !co.address ? `<p class="hint-bar">${ico('info')} Add your company address, ICE and RC in <a href="#/settings">Settings</a> so they appear on the quote.</p>` : ''}
+    ${!co.ice && !co.address ? `<p class="hint-bar">${ico('info')}<span>Add your company address, ICE and RC in <a href="#/settings">Settings</a> so they appear on the quote.</span></p>` : ''}
     <article class="quote-doc" lang="fr">
       <header class="qd-head">
         <div class="qd-co"><img src="${A}luxor-logo-gold.webp" alt="${esc(co.name || 'Luxor Création')}"><div><b>${esc(co.name || 'Luxor Création')}</b>${co.tagline ? `<span>${esc(co.tagline)}</span>` : ''}${co.address || co.city ? `<span>${esc([co.address, co.city].filter(Boolean).join(', '))}</span>` : ''}${co.phone ? `<span>Tél. ${esc(co.phone)}</span>` : ''}${co.email ? `<span>${esc(co.email)}</span>` : ''}${co.website ? `<span>${esc(co.website)}</span>` : ''}</div></div>
@@ -668,8 +668,8 @@ function viewQuote(id) {
       </header>
       <section class="qd-parties"><div class="qd-client"><p class="qd-lbl">Client</p><b>${esc(c.name || '')}</b>${c.address ? `<span>${esc(c.address)}</span>` : ''}${c.city ? `<span>${esc(c.city)}</span>` : ''}${c.phone ? `<span>Tél. ${esc(c.phone)}</span>` : ''}${c.email ? `<span>${esc(c.email)}</span>` : ''}</div>
         <div class="qd-object"><p class="qd-lbl">Objet</p><b>${esc(q.title)}</b><span>${FR_TYPE[q.type]}</span></div></section>
-      <table class="qd-table"><thead><tr><th>Désignation</th><th class="num">Qté</th><th class="num">P.U. HT</th><th class="num">Total HT</th></tr></thead>
-        <tbody>${q.items.map((i, n) => `<tr><td>${esc(i.label)}</td><td class="num">${String(i.qty).replace('.', ',')}</td><td class="num">${frMoney(i.unit)}</td><td class="num">${frMoney(t.lines[n])}</td></tr>`).join('')}</tbody></table>
+      <div class="qd-table-wrap"><table class="qd-table"><thead><tr><th>Désignation</th><th class="num">Qté</th><th class="num">P.U. HT</th><th class="num">Total HT</th></tr></thead>
+        <tbody>${q.items.map((i, n) => `<tr><td>${esc(i.label)}</td><td class="num">${String(i.qty).replace('.', ',')}</td><td class="num">${frMoney(i.unit)}</td><td class="num">${frMoney(t.lines[n])}</td></tr>`).join('')}</tbody></table></div>
       <section class="qd-sum">
         <div class="qd-notes">${q.notes ? `<p class="qd-lbl">Conditions</p><p>${esc(q.notes)}</p>` : ''}${q.depositPct ? `<p>Acompte de <b>${q.depositPct} %</b> à la commande, soit <b>${frMoney(t.deposit)}</b>. Solde à la livraison.</p>` : ''}${co.bank ? `<p class="qd-lbl">Règlement par virement</p><p>RIB : ${esc(co.bank)}</p>` : ''}</div>
         <dl class="qd-totals"><dt>Total HT</dt><dd>${frMoney(t.subtotal)}</dd>${t.discount ? `<dt>Remise ${String(q.discount).replace('.', ',')} %</dt><dd>− ${frMoney(t.discount)}</dd><dt>Net HT</dt><dd>${frMoney(t.net)}</dd>` : ''}${q.vat ? `<dt>TVA 20 %</dt><dd>${frMoney(t.vat)}</dd>` : '<dt>TVA</dt><dd>Non applicable</dd>'}<dt class="tot">Total ${q.vat ? 'TTC' : 'HT'}</dt><dd class="tot">${frMoney(t.total)}</dd></dl>
@@ -718,7 +718,7 @@ function viewMessages(v) {
       ${sel ? `<article class="card white inbox-read"><p class="lbl">${fdate(sel.date)}</p><h2>${esc(sel.subject)}</h2><p class="muted">${esc(sel.from)} · <a href="mailto:${esc(sel.email)}">${esc(sel.email)}</a></p><hr class="dash"><p class="msg-body">${esc(sel.body)}</p>
         <div class="row-gap"><a class="btn primary" href="mailto:${esc(sel.email)}?subject=${encodeURIComponent('Re: ' + sel.subject)}">${ico('mail')}Reply by email</a><button class="btn outline" id="unread">Mark as unread</button></div></article>` : ''}
     </section>`;
-  $$('[data-msg]', v).forEach(b => b.onclick = () => { ui.msg = b.dataset.msg; viewMessages(v); });
+  $$('[data-msg]', v).forEach(b => b.onclick = () => { ui.msg = b.dataset.msg; viewMessages(v); if (innerWidth < 760) $('.inbox-read')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); });
   const u = $('#unread', v); if (u) u.onclick = () => { ui.msg = sel.id; busy(u, S.markRead(sel.id, false), 'Marked as unread.'); };
 }
 
