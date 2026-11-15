@@ -1,18 +1,29 @@
 #!/usr/bin/env node
 /*
- * Luxor Création — local preview server (Node.js 18+, no dependencies).
+ * Luxor Création — local server (Node.js 18+, no dependencies).
  *   node backend/server.js            → http://localhost:8080   (admin: /admin/)
  *   PORT=8090 node backend/server.js  → other port
  *
- * Serves the frontend/ folder. Products, admin login and photos live in Supabase
- * (see backend/supabase/), so this server only serves files — like Vercel online.
+ *   /api/*   → the backend API (backend/src/app.js), which talks to Supabase
+ *   anything else → static files from frontend/
+ * Online, Vercel does the same: frontend/ as static files + api/index.js as a serverless function.
  * Unknown /produit/<slug>/ pages fall back to frontend/produit/index.html (same rewrite as vercel.json).
+ * Settings are read from the .env file at the project root (SUPABASE_URL, SUPABASE_ANON_KEY).
  */
 'use strict';
 const http = require('http');
 const fs = require('fs');
 const fsp = fs.promises;
 const path = require('path');
+
+/* minimal .env loader (no dependency): KEY=value lines, existing env vars win */
+try {
+  for (const line of fs.readFileSync(path.join(__dirname, '..', '.env'), 'utf8').split(/\r?\n/)) {
+    const m = /^\s*([A-Z0-9_]+)\s*=\s*(.*?)\s*$/.exec(line);
+    if (m && !(m[1] in process.env)) process.env[m[1]] = m[2].replace(/^(['"])(.*)\1$/, '$2');
+  }
+} catch {}
+const { handler: api } = require('./src/app');
 
 const ROOT = path.join(__dirname, '..', 'frontend');
 const PORT = +process.env.PORT || 8080;
@@ -33,8 +44,9 @@ async function resolve(rel) {
 
 http.createServer(async (req, res) => {
   try {
-    if (req.method !== 'GET' && req.method !== 'HEAD') return send(res, 405, 'Method not allowed');
     const url = new URL(req.url, 'http://localhost');
+    if (url.pathname === '/api' || url.pathname.startsWith('/api/')) return api(req, res);
+    if (req.method !== 'GET' && req.method !== 'HEAD') return send(res, 405, 'Method not allowed');
     let rel; try { rel = decodeURIComponent(url.pathname); } catch { return send(res, 400, 'Bad request'); }
     let hit = await resolve(rel);
     if (hit?.dir && !url.pathname.endsWith('/')) return send(res, 301, '', { Location: url.pathname + '/' + url.search });
@@ -47,4 +59,4 @@ http.createServer(async (req, res) => {
     if (req.method === 'HEAD') return res.end();
     fs.createReadStream(hit.file).pipe(res);
   } catch (e) { console.error(e); if (!res.headersSent) send(res, 500, 'Erreur serveur'); }
-}).listen(PORT, () => console.log(`Luxor Création → http://localhost:${PORT}/  (admin : /admin/)`));
+}).listen(PORT, () => console.log(`Luxor Création → http://localhost:${PORT}/  (admin : /admin/, API : /api/)`));

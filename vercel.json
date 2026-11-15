@@ -1,17 +1,42 @@
 {
   "outputDirectory": "frontend",
   "rewrites": [
-    { "source": "/produit/:slug/", "destination": "/produit/index.html" },
-    { "source": "/produit/:slug", "destination": "/produit/index.html" }
+    {
+      "source": "/api/:path*",
+      "destination": "/api?__path=:path*"
+    },
+    {
+      "source": "/produit/:slug/",
+      "destination": "/produit/index.html"
+    },
+    {
+      "source": "/produit/:slug",
+      "destination": "/produit/index.html"
+    }
   ],
   "headers": [
     {
       "source": "/admin/(.*)",
       "headers": [
-        { "key": "Cache-Control", "value": "no-store" },
-        { "key": "X-Robots-Tag", "value": "noindex, nofollow" },
-        { "key": "X-Frame-Options", "value": "DENY" }
+        {
+          "key": "Cache-Control",
+          "value": "no-store"
+        },
+        {
+          "key": "X-Robots-Tag",
+          "value": "noindex, nofollow"
+        },
+        {
+          "key": "X-Frame-Options",
+          "value": "DENY"
+        }
       ]
     }
-  ]
+  ],
+  "functions": {
+    "api/index.js": {
+      "includeFiles": "frontend/assets/catalogue.json",
+      "maxDuration": 15
+    }
+  }
 }

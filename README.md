@@ -6,7 +6,8 @@
 
 1. Extraire l'archive ZIP, puis ouvrir PowerShell dans le dossier `udc-nouvelle-maison`.
 2. Exécuter `node backend/server.js` depuis la racine du projet (Node.js 18 ou plus, aucune installation npm nécessaire).
-3. Ouvrir `http://localhost:8080/` — l'administration est sur `http://localhost:8080/admin/`.
+3. Ouvrir `http://localhost:8080/` — l'administration est sur `http://localhost:8080/admin/`, l'API sur `http://localhost:8080/api/`.
+   Le serveur lit `SUPABASE_URL` et `SUPABASE_ANON_KEY` dans le fichier `.env` à la racine.
 4. Ne pas lancer le site en double-cliquant sur les fichiers HTML car le catalogue JSON est chargé par `fetch`.
 
 Si le port 8080 est déjà utilisé, choisir `8090` et ouvrir `http://localhost:8090/`.
@@ -34,7 +35,7 @@ Produits, catégories, couleurs et photos sont stockés dans **Supabase** (proje
 - Connexion : comptes **Supabase Auth** listés dans la table `admins` (aujourd'hui `adminluxor@gmail.com`). Changer le mot de passe : Supabase → Authentication → Users.
 - Ajouter un administrateur : créer l'utilisateur dans Authentication, puis `insert into public.admins(user_id,email) select id,email from auth.users where email='…';`
 - Sécurité : règles RLS (lecture publique, écriture réservée aux admins), photos dans le bucket `products` (5 Mo max).
-- `frontend/` contient l'URL et la clé *publishable* Supabase : elles sont publiques par conception. Les clés secrètes restent dans `.env` (jamais commité ni déployé).
+- `frontend/` ne contient plus aucune adresse ni clé Supabase : le site et l'admin appellent uniquement l'API `/api`. La connexion Supabase est dans `backend/` (variables `SUPABASE_URL`, `SUPABASE_ANON_KEY`). Les clés secrètes restent dans `.env` (jamais commité ni déployé) ; la clé *service role* n'est pas utilisée par l'API.
 - `backend/supabase/schema.sql` crée tables et règles ; `seed.sql` importe `frontend/assets/catalogue.json` (secours si Supabase est indisponible).
 
 ## Données de l'administration (Supabase)
@@ -43,6 +44,18 @@ Clients, projets (pièces, étapes, historique), paiements, messages, devis et h
 
 - `backend/supabase/admin_schema.sql` : tables + règles métier côté base (numérotation des devis `DEV-AAAA-NNN`, paiement refusé s'il dépasse le reste à payer, historique automatique des changements de statut, `convert_quote()` qui transforme un devis accepté en projet, coordonnées de l'entreprise imprimées sur les devis).
 - `backend/supabase/admin_seed.sql` : données d'exemple (marquées `sample`), supprimables depuis Admin → Settings → « Remove sample data ».
+
+## Frontend / backend
+
+Le **frontend** (`frontend/`) ne fait qu'afficher : il appelle l'**API backend** (`backend/`), qui seule parle à Supabase.
+
+- `GET /api/catalog` — catalogue public du site (si Supabase est injoignable, l'API renvoie `frontend/assets/catalogue.json`).
+- `POST /api/auth/login`, `/api/auth/refresh`, `/api/auth/logout`, `GET /api/auth/me`, `PUT /api/auth/password` — connexion admin.
+- `/api/admin/…` — données et actions de l'administration (projets, paiements, clients, devis, entreprise, produits et photos). Chaque appel vérifie que l'utilisateur est bien dans `admins`, valide les données puis écrit dans Supabase **avec le jeton de l'admin**, donc les règles RLS s'appliquent toujours. Liste complète en tête de `backend/src/app.js`.
+
+En ligne, Vercel publie `frontend/` en statique et `api/index.js` comme fonction serverless (même domaine, voir `vercel.json`). Pour héberger l'API ailleurs, définir `window.LUXOR_API = 'https://…/api'` avant le chargement des scripts.
+
+Variables Vercel (Settings → Environment Variables) : `SUPABASE_URL` et `SUPABASE_ANON_KEY`. Sans elles, l'API utilise l'adresse et la clé publique du projet actuel.
 
 ## Structure
 
@@ -54,10 +67,16 @@ frontend/              le site (seul dossier publié par Vercel, voir vercel.jso
   assets/admin.*       interface d'administration
   assets/catalogue.json données du catalogue · assets/*.webp visuels
 backend/
-  server.js            serveur local d'aperçu (node backend/server.js)
+  server.js            serveur local : frontend/ + API (node backend/server.js)
+  src/app.js           routes de l'API /api/…
+  src/auth.js          connexion admin (Supabase Auth)
+  src/catalog.js       catalogue public + gestion des produits et photos
+  src/admin.js         clients, projets, paiements, devis, entreprise : validations et règles
+  src/supabase.js      accès Supabase (URL et clé lues dans l'environnement)
   supabase/schema.sql  tables, règles de sécurité, stockage photos
   supabase/seed.sql    import du catalogue
-vercel.json            publie frontend/ ; /produit/<slug>/ inconnu → frontend/produit/index.html
+api/index.js           point d'entrée Vercel de l'API (réutilise backend/src/app.js)
+vercel.json            publie frontend/ ; /api/* → API ; /produit/<slug>/ inconnu → frontend/produit/index.html
 ```
 
-Pour seulement afficher le site : `python -m http.server 8080 --directory frontend`.
+Pour seulement afficher le site sans l'API : `python -m http.server 8080 --directory frontend` (le catalogue utilise alors `catalogue.json`, l'administration ne fonctionne pas).

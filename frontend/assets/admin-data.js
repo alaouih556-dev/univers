@@ -1,11 +1,8 @@
-/* Luxor Création — admin data layer, backed by Supabase.
+/* Luxor Création — admin data layer (browser side).
  *
- * Tables (backend/supabase/admin_schema.sql): clients, projects (+ project_pieces, project_events),
- * payments, messages, quotes (+ quote_items), revenue_history. All admin-only (row level security).
- * Business rules live in the database: quote numbers, "payment cannot exceed the balance",
- * status-change timeline entries, convert_quote().
- *
- * The pages read a local copy (fast, synchronous selectors) that is refreshed from the database
+ * All reads and writes go through the backend API (/api/admin/…, see backend/src/admin.js), which
+ * validates every change and applies the business rules together with the database.
+ * The pages read a local copy (fast, synchronous selectors) that is refreshed from the API
  * after every change; mutations are async and throw readable errors.
  */
 (() => {
@@ -23,48 +20,14 @@ const CLIENT_TYPES = { individual: 'Individual', company: 'Company', hotel: 'Hot
 const QUOTE_STATUS = { draft: 'Draft', sent: 'Sent', accepted: 'Accepted', refused: 'Refused' };
 const fmtMAD = n => new Intl.NumberFormat(window.LuxorI18n?.numLocale || 'en-US', { maximumFractionDigits: 0 }).format(Math.round(n || 0)) + ' MAD';
 
-/* ---------------- database access ---------------- */
-let request = null;                       // set by init(): (path, {method, body, headers}) => json
-const rest = (path, opts) => request('/rest/v1/' + path, opts);
-const ret = { Prefer: 'return=representation' };
+/* ---------------- API access ---------------- */
+let request = null;                       // set by init(): (path, {method, body}) => json, authenticated
 const enc = encodeURIComponent;
-
-const mapClient = c => ({ id: c.id, name: c.name, type: c.type, phone: c.phone, email: c.email, city: c.city, address: c.address, sample: c.sample });
-const mapProject = p => ({
-  id: p.id, ref: p.ref, title: p.title, clientId: p.client_id, type: p.type, status: p.status, description: p.description,
-  startDate: p.start_date, deliveryDate: p.delivery_date || p.start_date, completedDate: p.completed_date, totalPrice: p.total_price,
-  steps: { design: false, materials: false, fabrication: false, finishing: false, delivery: false, ...(p.steps || {}) },
-  pieces: (p.project_pieces || []).sort((a, b) => a.sort - b.sort).map(x => ({ id: x.id, name: x.name, qty: +x.qty, material: x.material, finish: x.finish, dimensions: x.dimensions, image: x.image })),
-  events: (p.project_events || []).sort((a, b) => a.date.localeCompare(b.date) || a.created_at.localeCompare(b.created_at)).map(e => ({ id: e.id, date: e.date, type: e.type, status: e.status, text: e.text, at: e.created_at }))
-});
-const mapPayment = x => ({ id: x.id, projectId: x.project_id, date: x.date, amount: x.amount, label: x.label, method: x.method });
-const mapMessage = m => ({ id: m.id, from: m.from_name, email: m.email, subject: m.subject, body: m.body, date: m.date, read: m.read, sample: m.sample });
-const mapQuote = q => ({
-  id: q.id, number: q.number, clientId: q.client_id, date: q.date, validDays: q.valid_days, title: q.title, type: q.type, status: q.status,
-  discount: +q.discount, vat: q.vat, depositPct: q.deposit_pct, notes: q.notes, projectId: q.project_id,
-  items: (q.quote_items || []).sort((a, b) => a.sort - b.sort).map(i => ({ id: i.id, label: i.label, qty: +i.qty, unit: i.unit }))
-});
+const send = (method, path, body) => request('/admin' + path, { method, body });
 
 let db = { clients: [], projects: [], payments: [], messages: [], quotes: [], revenue: {}, company: {} };
 let loaded = false;
-async function refresh() {
-  const [clients, projects, payments, messages, quotes, revenue, company] = await Promise.all([
-    rest('clients?select=*&order=name'),
-    rest('projects?select=*,project_pieces(*),project_events(*)&order=start_date.desc'),
-    rest('payments?select=*&order=date,created_at'),
-    rest('messages?select=*&order=date.desc'),
-    rest('quotes?select=*,quote_items(*)&order=date.desc,number.desc'),
-    rest('revenue_history?select=*'),
-    rest('company?select=*&id=eq.1')
-  ]);
-  db = {
-    clients: clients.map(mapClient), projects: projects.map(mapProject), payments: payments.map(mapPayment),
-    messages: messages.map(mapMessage), quotes: quotes.map(mapQuote),
-    revenue: Object.fromEntries(revenue.map(r => [`${r.year}-${r.month}`, { amount: r.amount, sample: r.sample }])),
-    company: company[0] || { name: 'Luxor Création' }
-  };
-  loaded = true;
-}
+async function refresh() { db = await request('/admin/data'); loaded = true; }
 const subs = new Set();
 const notify = () => subs.forEach(fn => { try { fn(db); } catch (e) { console.error(e); } });
 async function after(fn) { const out = await fn(); await refresh(); notify(); return out; }
@@ -151,51 +114,20 @@ function notifications() {
 }
 
 /* ---------------- projects ---------------- */
-const clean = (v, n) => String(v ?? '').replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, n);
-const updateStatus = (id, status) => after(async () => {
-  if (!STATUSES.includes(status)) throw new Error('Unknown status.');
-  await rest(`projects?id=eq.${id}`, { method: 'PATCH', body: { status }, headers: ret });     // the database adds the timeline entry
-});
-const toggleStep = (id, key) => after(async () => {
-  const p = project(id); if (!p || !(key in p.steps)) return;
-  const steps = { ...p.steps, [key]: !p.steps[key] };
-  const body = { steps };
-  if (p.status === 'started' && steps[key]) body.status = 'in_progress';
-  await rest(`projects?id=eq.${id}`, { method: 'PATCH', body, headers: ret });
-  const label = STEPS.find(([k]) => k === key)[1];
-  await rest('project_events', { method: 'POST', body: { project_id: id, type: 'step', text: `${label} ${steps[key] ? 'completed' : 'reopened'}.` } });
-});
-const addPayment = (id, { amount, date, method }) => after(async () => {
-  const p = project(id); amount = Math.round(+amount);
-  if (!p || !(amount > 0)) throw new Error('Enter a valid amount.');
-  const d = date || iso(today());
-  if (parse(d) > today()) throw new Error('The payment date cannot be in the future.');
-  const label = paidFor(p) === 0 ? 'deposit' : amount === dueFor(p) ? 'balance' : 'installment';
-  if (!['Bank transfer', 'Cheque', 'Card', 'Cash'].includes(method)) method = 'Bank transfer';
-  await rest('payments', { method: 'POST', body: { project_id: id, amount, date: d, method: method || 'Bank transfer', label } });   // the database refuses more than the balance
-  await rest('project_events', { method: 'POST', body: { project_id: id, date: d, type: 'payment', text: `${label === 'deposit' ? 'Deposit' : label === 'balance' ? 'Balance' : 'Payment'} received — ${fmtMAD(amount)} (${method || 'Bank transfer'}).` } });
-});
-const addNote = (id, text) => after(async () => {
-  text = clean(text, 600); if (!text) return;
-  await rest('project_events', { method: 'POST', body: { project_id: id, type: 'note', text } });
-});
-const markRead = (id, read = true) => after(() => rest(`messages?id=eq.${id}`, { method: 'PATCH', body: { read } }));
+const updateStatus = (id, status) => after(() => send('PATCH', `/projects/${enc(id)}/status`, { status }));
+const toggleStep = (id, key) => after(() => send('POST', `/projects/${enc(id)}/steps/${enc(key)}`));
+const addPayment = (id, { amount, date, method }) => after(() => send('POST', `/projects/${enc(id)}/payments`, { amount, date, method }));
+const addNote = (id, text) => { if (!String(text ?? '').trim()) return Promise.resolve(); return after(() => send('POST', `/projects/${enc(id)}/notes`, { text })); };
+const markRead = (id, read = true) => after(() => send('PATCH', `/messages/${enc(id)}`, { read }));
 
 /* ---------------- clients ---------------- */
-function clientFields(data) {
-  const c = { name: clean(data.name, 120), type: CLIENT_TYPES[data.type] ? data.type : 'individual', phone: clean(data.phone, 40), email: clean(data.email, 120), city: clean(data.city, 80), address: clean(data.address, 200) };
-  if (!c.name) throw new Error('The client name is required.');
-  if (c.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(c.email)) throw new Error('Enter a valid email address.');
-  return c;
-}
-const dupe = e => { if (e.duplicate) throw new Error('A client with this name already exists.'); throw e; };
-const addClient = data => after(async () => { const [c] = await rest('clients', { method: 'POST', body: clientFields(data), headers: ret }).catch(dupe); return mapClient(c); });
-const updateClient = (id, data) => after(async () => { const rows = await rest(`clients?id=eq.${id}`, { method: 'PATCH', body: clientFields(data), headers: ret }).catch(dupe); if (!rows?.length) throw new Error('Client not found.'); });
+const addClient = data => after(() => send('POST', '/clients', data));
+const updateClient = (id, data) => after(() => send('PATCH', `/clients/${enc(id)}`, data));
 function clientUsage(id) {
   const projects = db.projects.filter(p => p.clientId === id);
   return { projects, quotes: db.quotes.filter(q => q.clientId === id), payments: db.payments.filter(x => projects.some(p => p.id === x.projectId)) };
 }
-const removeClient = id => after(async () => { const rows = await rest(`clients?id=eq.${id}`, { method: 'DELETE', headers: ret }); if (!rows?.length) throw new Error('Client not found.'); });   // projects, payments and quotes are deleted with it (cascade)
+const removeClient = id => after(() => send('DELETE', `/clients/${enc(id)}`));   // projects, payments and quotes are deleted with it
 
 /* ---------------- quotes (devis) ---------------- */
 function quoteTotals(q) {
@@ -206,48 +138,18 @@ function quoteTotals(q) {
   return { lines, subtotal, discount, net, vat, total, deposit: Math.round(total * Math.min(100, Math.max(0, +q.depositPct || 0)) / 100) };
 }
 const quoteExpiry = q => iso(parse(q.date).getTime() + q.validDays * DAY);
-const saveQuote = data => after(async () => {
-  if (!client(data.clientId)) throw new Error('Choose a client.');
-  const items = (data.items || []).map(i => ({ label: clean(i.label, 200), qty: Math.round((+i.qty || 0) * 100) / 100, unit: Math.max(0, Math.round(+i.unit || 0)) })).filter(i => i.label || i.unit);
-  if (!items.length) throw new Error('Add at least one line to the quote.');
-  if (items.some(i => !i.label)) throw new Error('Every line needs a description.');
-  if (items.some(i => !(i.qty > 0))) throw new Error('Every line needs a quantity above 0.');
-  const fields = { client_id: data.clientId, title: clean(data.title, 140) || 'Quote', type: TYPE_LABEL[data.type] ? data.type : 'custom', date: data.date || iso(today()),
-    valid_days: Math.min(365, Math.max(1, Math.round(+data.validDays || 30))), discount: Math.min(100, Math.max(0, +data.discount || 0)), vat: !!data.vat,
-    deposit_pct: Math.min(100, Math.max(0, Math.round(+data.depositPct || 0))), notes: clean(data.notes, 1200) };
-  let id = data.id;
-  if (id) {
-    const q = quote(id); if (!q) throw new Error('Quote not found.');
-    if (q.status === 'accepted' && q.projectId) throw new Error('This quote is already a project and can no longer be edited.');
-    await rest(`quotes?id=eq.${id}`, { method: 'PATCH', body: fields });
-    await rest(`quote_items?quote_id=eq.${id}`, { method: 'DELETE' });
-  } else {
-    const [q] = await rest('quotes', { method: 'POST', body: fields, headers: ret });          // number DEV-YYYY-NNN set by the database
-    id = q.id;
-  }
-  await rest('quote_items', { method: 'POST', body: items.map((i, n) => ({ ...i, quote_id: id, sort: n })) });
-  return id;
-});
-const setQuoteStatus = (id, status) => after(async () => { if (!QUOTE_STATUS[status]) throw new Error('Unknown status.'); await rest(`quotes?id=eq.${id}`, { method: 'PATCH', body: { status } }); });
-const removeQuote = id => after(() => rest(`quotes?id=eq.${id}`, { method: 'DELETE' }));
-const convertQuote = id => after(() => rest('rpc/convert_quote', { method: 'POST', body: { quote_id: id } }));   // returns the new project id
+const saveQuote = data => after(async () => (await send(data.id ? 'PUT' : 'POST', data.id ? `/quotes/${enc(data.id)}` : '/quotes', data)).id);
+const setQuoteStatus = (id, status) => after(() => send('PATCH', `/quotes/${enc(id)}/status`, { status }));
+const removeQuote = id => after(() => send('DELETE', `/quotes/${enc(id)}`));
+const convertQuote = id => after(async () => (await send('POST', `/quotes/${enc(id)}/convert`)).projectId);   // returns the new project id
 
 /* ---------------- company details (printed on quotes) ---------------- */
 const COMPANY_FIELDS = ['name', 'tagline', 'address', 'city', 'phone', 'email', 'website', 'ice', 'rc', 'if_number', 'patente', 'bank'];
-const saveCompany = data => after(async () => {
-  const body = Object.fromEntries(COMPANY_FIELDS.map(k => [k, clean(data[k], k === 'bank' ? 80 : 120)]));
-  if (!body.name) throw new Error('The company name is required.');
-  body.updated_at = new Date().toISOString();
-  await rest('company?id=eq.1', { method: 'PATCH', body });
-});
+const saveCompany = data => after(() => send('PUT', '/company', data));
 
 /* ---------------- sample data ---------------- */
 const sampleCounts = () => ({ clients: db.clients.filter(c => c.sample).length, messages: db.messages.filter(m => m.sample).length });
-const removeSampleData = () => after(async () => {
-  await rest('clients?sample=is.true', { method: 'DELETE' });       // cascades to their projects, payments and quotes
-  await rest('messages?sample=is.true', { method: 'DELETE' });
-  await rest('revenue_history?sample=is.true', { method: 'DELETE' });
-});
+const removeSampleData = () => after(() => send('DELETE', '/sample-data'));
 
 window.LuxorStore = {
   STATUSES, STATUS_LABEL, TYPE_LABEL, STEPS, CLIENT_TYPES, QUOTE_STATUS,

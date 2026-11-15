@@ -1,5 +1,6 @@
 # never upload these to Vercel
 .env
 .env.*
-backend/
+backend/supabase/
+backend/server.js
 *.tmp

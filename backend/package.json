@@ -1,0 +1,8 @@
+{
+  "name": "luxor-backend",
+  "private": true,
+  "description": "Luxor Création API (Supabase) + local server for the frontend",
+  "main": "src/app.js",
+  "scripts": { "start": "node server.js" },
+  "engines": { "node": ">=18" }
+}

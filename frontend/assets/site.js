@@ -47,14 +47,11 @@ applyLangMeta();
 /* Switch language in place (no reload, no blank page): re-render with the data already loaded */
 function setLang(l){LANG=l;localStorage.setItem('udc_lang',l);applyLangMeta();const y=scrollY;init();scrollTo({top:y,behavior:'instant'});
  const app=document.getElementById('app');app.classList.remove('lang-fade');void app.offsetWidth;app.classList.add('lang-fade');document.getElementById('langsw')?.focus({preventScroll:true})}
-/* Catalogue: live from Supabase (public read-only key), local catalogue.json as a fallback */
-const SB={url:'https://oknbuexbsukrzycwiies.supabase.co',key:'sb_publishable_JA1AK7R3FiYQ9MLzWXf22g_yPY3PN7T'};
-async function loadDb(){
- const get=t=>fetch(SB.url+'/rest/v1/'+t,{headers:{apikey:SB.key},cache:'no-cache'}).then(r=>{if(!r.ok)throw Error(t+' '+r.status);return r.json()});
- const [categories,colors,rows]=await Promise.all([get('categories?select=id,name,description&order=sort'),get('colors?select=name,hex&order=sort'),get('products?select=*&order=sort,id')]);
- return {categories,colors,products:rows.map(({is_new,...p})=>({...p,new:is_new}))};
-}
-let db;try{db=await loadDb()}catch(e){console.warn('Supabase indisponible, catalogue local utilisé',e);try{let r=await fetch(root+'assets/catalogue.json',{cache:'no-cache'});if(!r.ok)throw Error('Données catalogue inaccessibles');db=await r.json()}catch(e2){document.getElementById('app').innerHTML='<div style="padding:5rem;font-family:Lato,Arial"><h1>'+t('Erreur de chargement')+'</h1><p>'+t('Le catalogue est momentanément indisponible. Veuillez réessayer.')+'</p></div>';console.error(e2);return}}
+/* Catalogue: from the backend API (/api/catalog), local catalogue.json as a fallback if the API is unreachable.
+   window.LUXOR_API can point to another API origin (e.g. https://api.example.com/api). */
+const API=(window.LUXOR_API||'/api').replace(/\/+$/,'');
+async function loadDb(){const r=await fetch(API+'/catalog',{cache:'no-cache'});if(!r.ok)throw Error('API '+r.status);return r.json()}
+let db;try{db=await loadDb()}catch(e){console.warn('API indisponible, catalogue local utilisé',e);try{let r=await fetch(root+'assets/catalogue.json',{cache:'no-cache'});if(!r.ok)throw Error('Données catalogue inaccessibles');db=await r.json()}catch(e2){document.getElementById('app').innerHTML='<div style="padding:5rem;font-family:Lato,Arial"><h1>'+t('Erreur de chargement')+'</h1><p>'+t('Le catalogue est momentanément indisponible. Veuillez réessayer.')+'</p></div>';console.error(e2);return}}
 const C=db.categories,P=db.products,colors=db.colors,h=s=>root+s,esc=t=>String(t??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const money=n=>new Intl.NumberFormat('fr-MA').format(n)+' DH';
 const isUrl=n=>/^https?:\/\//.test(n||'');

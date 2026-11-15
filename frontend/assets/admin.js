@@ -34,126 +34,51 @@ const ico = (n, cls = '') => `<svg class="i ${cls}" viewBox="0 0 24 24" aria-hid
 let state = { email: '', products: [], categories: [], colors: [], q: '', cat: '', catalogLoaded: false };
 const ui = { filter: '', q: '', route: '' };
 
-/* ---------------- Supabase (auth + database + photo storage) ----------------
- * The URL and the publishable key are public by design; what an account may do is enforced
- * by the database security rules (backend/supabase/schema.sql): only users listed in `admins` can write. */
-const SB = { url: 'https://oknbuexbsukrzycwiies.supabase.co', key: 'sb_publishable_JA1AK7R3FiYQ9MLzWXf22g_yPY3PN7T', bucket: 'products' };
+/* ---------------- backend API (backend/src/app.js) ----------------
+ * The admin only talks to /api. The API holds the Supabase connection, checks that the
+ * signed-in user is an admin, validates every change and applies the business rules.
+ * window.LUXOR_API can point to another API origin (e.g. https://api.example.com/api). */
+const API = (window.LUXOR_API || '/api').replace(/\/+$/, '');
 const SESSION_KEY = 'luxor_admin_session';
-const photoBase = `${SB.url}/storage/v1/object/public/${SB.bucket}/`;
 let session = null;
 try { session = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null'); } catch {}
 const saveSession = s => { session = s; if (s) localStorage.setItem(SESSION_KEY, JSON.stringify(s)); else localStorage.removeItem(SESSION_KEY); };
 
-async function authRequest(grant, body) {
-  const r = await fetch(`${SB.url}/auth/v1/token?grant_type=${grant}`, { method: 'POST', headers: { apikey: SB.key, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-  const d = await r.json().catch(() => ({}));
-  if (!r.ok) {
-    const m = d.error_description || d.msg || d.message || '';
-    if (/invalid login credentials/i.test(m)) throw new Error('Incorrect email or password.');
-    if (/email not confirmed/i.test(m)) throw new Error('This account is not confirmed yet.');
-    if (r.status === 429) throw new Error('Too many attempts. Please try again in a few minutes.');
-    throw new Error(m || 'Sign-in failed (' + r.status + ').');
-  }
-  return { access_token: d.access_token, refresh_token: d.refresh_token, expires_at: Math.floor(Date.now() / 1000) + (d.expires_in || 3600), email: d.user?.email, user_id: d.user?.id };
+async function send(path, { method = 'GET', body, token } = {}) {
+  let r;
+  try { r = await fetch(API + path, { method, headers: { ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}), ...(token ? { Authorization: 'Bearer ' + token } : {}) }, body: body !== undefined ? JSON.stringify(body) : undefined }); }
+  catch { throw new Error('The server cannot be reached. Check your connection and try again.'); }
+  const d = await r.json().catch(() => null);
+  if (!r.ok) { const e = new Error(d?.error || 'Error ' + r.status); e.status = r.status; throw e; }
+  return d;
 }
+let refreshing = null;
 async function token() {
   if (!session) throw authError();
   if (session.expires_at - 60 < Date.now() / 1000) {
-    try { saveSession(await authRequest('refresh_token', { refresh_token: session.refresh_token })); }
-    catch { saveSession(null); throw authError(); }
+    refreshing ||= send('/auth/refresh', { method: 'POST', body: { refresh_token: session.refresh_token } }).finally(() => { refreshing = null; });
+    try { saveSession(await refreshing); }
+    catch (e) { if (e.status === 401) { saveSession(null); throw authError(); } throw e; }
   }
   return session.access_token;
 }
 function authError() { showLogin(session ? 'Your session has expired. Please sign in again.' : ''); return new Error('auth'); }
 
-async function sb(path, { method = 'GET', body, headers = {}, raw = false } = {}) {
-  const r = await fetch(SB.url + path, { method, headers: { apikey: SB.key, Authorization: 'Bearer ' + await token(), ...(body && !raw ? { 'Content-Type': 'application/json' } : {}), ...headers }, body: raw ? body : body ? JSON.stringify(body) : undefined });
-  if (r.status === 401) { saveSession(null); throw authError(); }
-  const text = await r.text(); let d = null; try { d = text ? JSON.parse(text) : null; } catch {}
-  if (!r.ok) {
-    const m = d?.message || d?.msg || d?.error_description || d?.error || '';
-    if (d?.code === '23505') { const e = new Error('duplicate'); e.duplicate = true; throw e; }
-    if (d?.code === '42501' || r.status === 403 || /row-level security/i.test(m)) throw new Error('This account is not allowed to do that.');
-    throw new Error(m || 'Error ' + r.status);
-  }
-  return d;
-}
-const fromRow = ({ is_new, ...p }) => ({ ...p, new: is_new });
-const slugify = s => String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60);
-function toRow(b) {
-  const r = {};
-  for (const k of ['name', 'category', 'description', 'material', 'dimensions', 'color']) if (k in b) r[k] = String(b[k] ?? '').trim();
-  if ('price' in b) r.price = Math.round(Number(b.price));
-  if ('new' in b) r.is_new = !!b.new;
-  if ('featured' in b) r.featured = !!b.featured;
-  return r;
-}
-async function uploadPhoto(dataUrl, slug) {
-  const blob = await (await fetch(dataUrl)).blob();
-  const ext = blob.type === 'image/png' ? 'png' : blob.type === 'image/jpeg' ? 'jpg' : 'webp';
-  const name = `${slug}-${Math.random().toString(36).slice(2, 10)}.${ext}`;
-  await sb(`/storage/v1/object/${SB.bucket}/${name}`, { method: 'POST', body: blob, raw: true, headers: { 'Content-Type': blob.type, 'x-upsert': 'false' } });
-  return photoBase + name;
-}
-async function deletePhotos(p) {
-  const names = [...new Set([p.fallback, ...(p.gallery || [])])].filter(u => typeof u === 'string' && u.startsWith(photoBase)).map(u => u.slice(photoBase.length));
-  if (names.length) await sb(`/storage/v1/object/${SB.bucket}`, { method: 'DELETE', body: { prefixes: names } }).catch(() => {});
+/* authenticated call; a 401 means the session is no longer valid → back to the login screen */
+async function call(path, opts = {}) {
+  try { return await send(path, { ...opts, token: await token() }); }
+  catch (e) { if (e.status === 401) { saveSession(null); throw authError(); } throw e; }
 }
 
 const api = {
-  async login(email, password) {
-    const s = await authRequest('password', { email: String(email).trim(), password });
-    saveSession(s);
-    const rows = await sb(`/rest/v1/admins?select=email&user_id=eq.${s.user_id}`);
-    if (!rows?.length) { await api.logout(); throw new Error('This account does not have admin access.'); }
-    return { email: s.email };
-  },
-  async me() {
-    if (!session) throw authError();
-    await token();
-    return { email: session.email };
-  },
-  async logout() {
-    if (session) await fetch(`${SB.url}/auth/v1/logout`, { method: 'POST', headers: { apikey: SB.key, Authorization: 'Bearer ' + session.access_token } }).catch(() => {});
-    saveSession(null);
-  },
-  async list() {
-    const [products, categories, colors] = await Promise.all([
-      sb('/rest/v1/products?select=*&order=sort,id'), sb('/rest/v1/categories?select=id,name,description&order=sort'), sb('/rest/v1/colors?select=name,hex&order=sort')]);
-    return { products: products.map(fromRow), categories, colors };
-  },
-  async create(b) {
-    const row = toRow(b);
-    if (!row.name) throw new Error('The name is required.');
-    row.sort = Math.max(0, ...state.products.map(p => p.sort || 0)) + 1;
-    const base = `${row.category}-${slugify(row.name) || 'produit'}`;
-    let slug = base, i = 2;
-    while (state.products.some(p => p.slug === slug)) slug = `${base}-${i++}`;
-    if (b.photo) { const url = await uploadPhoto(b.photo, slug); row.fallback = url; row.gallery = [url]; }
-    else row.fallback = state.products.find(p => p.category === row.category)?.fallback || 'hero-ivoire.webp';
-    for (let n = 0; n < 5; n++) {
-      try {
-        const [p] = await sb('/rest/v1/products', { method: 'POST', body: { ...row, slug }, headers: { Prefer: 'return=representation' } });
-        const [withSku] = await sb(`/rest/v1/products?id=eq.${p.id}`, { method: 'PATCH', body: { sku: 'LUX-' + String(p.id).padStart(4, '0') }, headers: { Prefer: 'return=representation' } });
-        return { product: fromRow(withSku || p) };
-      } catch (e) { if (!e.duplicate) throw e; slug = `${base}-${i++}`; }
-    }
-    throw new Error('Could not create the product, please try again.');
-  },
-  async update(p, b) {
-    const row = toRow(b);
-    let old = null;
-    if (b.photo) { const url = await uploadPhoto(b.photo, p.slug); row.image = ''; row.fallback = url; row.gallery = [url]; old = { ...p }; }
-    const rows = await sb(`/rest/v1/products?slug=eq.${encodeURIComponent(p.slug)}`, { method: 'PATCH', body: row, headers: { Prefer: 'return=representation' } });
-    if (!rows?.length) throw new Error('Product not found or action not allowed.');
-    if (old) await deletePhotos(old);
-    return { product: fromRow(rows[0]) };
-  },
-  async remove(p) {
-    const rows = await sb(`/rest/v1/products?slug=eq.${encodeURIComponent(p.slug)}`, { method: 'DELETE', headers: { Prefer: 'return=representation' } });
-    if (!rows?.length) throw new Error('Product not found or action not allowed.');
-    await deletePhotos(p);
-  }
+  async login(email, password) { saveSession(await send('/auth/login', { method: 'POST', body: { email: String(email).trim(), password } })); return { email: session.email }; },
+  me: () => call('/auth/me'),
+  async logout() { if (session) await send('/auth/logout', { method: 'POST', token: session.access_token }).catch(() => {}); saveSession(null); },
+  changePassword: password => call('/auth/password', { method: 'PUT', body: { password } }),
+  list: () => call('/admin/catalog'),
+  create: b => call('/admin/products', { method: 'POST', body: b }),
+  update: (p, b) => call('/admin/products/' + encodeURIComponent(p.slug), { method: 'PATCH', body: b }),
+  remove: p => call('/admin/products/' + encodeURIComponent(p.slug), { method: 'DELETE' })
 };
 
 
@@ -233,7 +158,7 @@ let unsub = null;
 async function startApp() {
   document.body.className = 'is-login';
   app.innerHTML = `<main class="login"><div class="login-card loading-card"><img class="login-logo" src="${A}luxor-logo-gold.webp" alt="Luxor Création"><p class="login-sub">Loading your data…</p></div></main>`;
-  try { await S.init(sb); }
+  try { await S.init(call); }
   catch (x) {
     if (x.message === 'auth') return;
     app.innerHTML = `<main class="login"><div class="login-card"><img class="login-logo" src="${A}luxor-logo-gold.webp" alt="Luxor Création"><h1>Could not load the data</h1><p class="login-sub">${esc(x.message)}</p><button class="btn primary" onclick="location.reload()">Try again</button></div></main>`;
@@ -763,7 +688,7 @@ function viewSettings(v) {
     if (f.pw.value.length < 10) return err.textContent = 'Use at least 10 characters.';
     if (f.pw.value !== f.pw2.value) return err.textContent = 'The two passwords do not match.';
     err.textContent = '';
-    try { await sb('/auth/v1/user', { method: 'PUT', body: { password: f.pw.value } }); f.reset(); toast('Password updated.'); }
+    try { await api.changePassword(f.pw.value); f.reset(); toast('Password updated.'); }
     catch (x) { if (x.message !== 'auth') err.textContent = x.message; }
   };
   $('#companyform', v).onsubmit = async e => { e.preventDefault(); const f = e.target, err = $('#coerr', v), b = f.querySelector('[type=submit]'); b.disabled = true; err.textContent = '';
