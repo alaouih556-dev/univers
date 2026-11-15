@@ -171,6 +171,7 @@ const addPayment = (id, { amount, date, method }) => after(async () => {
   const d = date || iso(today());
   if (parse(d) > today()) throw new Error('The payment date cannot be in the future.');
   const label = paidFor(p) === 0 ? 'deposit' : amount === dueFor(p) ? 'balance' : 'installment';
+  if (!['Bank transfer', 'Cheque', 'Card', 'Cash'].includes(method)) method = 'Bank transfer';
   await rest('payments', { method: 'POST', body: { project_id: id, amount, date: d, method: method || 'Bank transfer', label } });   // the database refuses more than the balance
   await rest('project_events', { method: 'POST', body: { project_id: id, date: d, type: 'payment', text: `${label === 'deposit' ? 'Deposit' : label === 'balance' ? 'Balance' : 'Payment'} received — ${fmtMAD(amount)} (${method || 'Bank transfer'}).` } });
 });

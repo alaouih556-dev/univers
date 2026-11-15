@@ -489,7 +489,7 @@ function viewProject(id) {
           <div class="pbar gold" role="progressbar" aria-valuenow="${payPct}" aria-valuemin="0" aria-valuemax="100" aria-label="Paid ${payPct}%"><i style="width:${payPct}%"></i></div><p class="muted small">${payPct}% paid</p>
           ${due > 0 ? `<form class="pay-form" id="payform"><p class="lbl">Record a payment</p>
             <div class="pf-row"><input name="amount" type="number" min="1" max="${due}" step="1" placeholder="Amount (MAD)" required aria-label="Amount in MAD"><input name="date" type="date" value="${S.iso(S.today())}" max="${S.iso(S.today())}" aria-label="Payment date"></div>
-            <div class="pf-row"><select name="method" aria-label="Payment method"><option>Bank transfer</option><option>Cheque</option><option>Card</option><option>Cash</option></select><button class="btn primary" type="submit">Add payment</button></div>
+            <div class="pf-row"><select name="method" aria-label="Payment method"><option value="Bank transfer">Bank transfer</option><option value="Cheque">Cheque</option><option value="Card">Card</option><option value="Cash">Cash</option></select><button class="btn primary" type="submit">Add payment</button></div>
             <button type="button" class="link-btn" id="payfull">Fill remaining (${money(due)})</button><p class="form-err" id="payerr" role="alert"></p></form>` : '<p class="paid-ok">' + ico('check') + ' Fully paid</p>'}
         </section>
       </div>
