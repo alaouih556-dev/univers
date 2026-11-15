@@ -21,6 +21,8 @@ const QUOTE_STATUS = { draft: 'Draft', sent: 'Sent', accepted: 'Accepted', refus
 const ORDER_STATUS = { draft: 'Draft', confirmed: 'Confirmed', delivered: 'Delivered', cancelled: 'Cancelled' };
 const PAY_METHODS = ['Bank transfer', 'Cheque', 'Card', 'Cash'];
 const DELIVERY_STATUS = { draft: 'Draft', delivered: 'Delivered & signed' };
+const RECEIPT_STATUS = { draft: 'Draft', validated: 'Compliant', dispute: 'Dispute' };
+const CONDITIONS = { ok: 'Compliant', damaged: 'Damaged', missing: 'Missing' };
 const fmtMAD = n => new Intl.NumberFormat(window.LuxorI18n?.numLocale || 'en-US', { maximumFractionDigits: 0 }).format(Math.round(n || 0)) + ' MAD';
 
 /* ---------------- API access ---------------- */
@@ -28,9 +30,9 @@ let request = null;                       // set by init(): (path, {method, body
 const enc = encodeURIComponent;
 const send = (method, path, body) => request('/admin' + path, { method, body });
 
-let db = { clients: [], projects: [], payments: [], messages: [], quotes: [], orders: [], deliveries: [], revenue: {}, company: {} };
+let db = { clients: [], projects: [], payments: [], messages: [], quotes: [], orders: [], deliveries: [], receipts: [], revenue: {}, company: {} };
 let loaded = false;
-async function refresh() { db = await request('/admin/data'); db.orders ||= []; db.deliveries ||= []; loaded = true; }
+async function refresh() { db = await request('/admin/data'); db.orders ||= []; db.deliveries ||= []; db.receipts ||= []; loaded = true; }
 const subs = new Set();
 const notify = () => subs.forEach(fn => { try { fn(db); } catch (e) { console.error(e); } });
 async function after(fn) { const out = await fn(); await refresh(); notify(); return out; }
@@ -40,6 +42,15 @@ const client = id => db.clients.find(c => c.id === id);
 const quote = id => db.quotes.find(q => q.id === id);
 const order = id => db.orders.find(o => o.id === id);
 const delivery = id => db.deliveries.find(d => d.id === id);
+const receipt = id => db.receipts.find(r => r.id === id);
+/* supplier reception: amount = quantity received × unit price, WITHOUT VAT */
+function receiptTotals(r) {
+  const lines = r.items.map(i => Math.round((+i.qty || 0) * (+i.unit || 0)));
+  return { lines, total: lines.reduce((s, v) => s + v, 0) };
+}
+/* compliant = every line in good condition and fully received */
+const receiptCompliant = r => r.items.every(i => i.condition === 'ok' && (i.qtyOrdered == null || i.qty >= i.qtyOrdered));
+const suppliers = () => { const m = new Map(); for (const r of db.receipts) if (!m.has(r.supplier.name.toLowerCase())) m.set(r.supplier.name.toLowerCase(), r.supplier); return [...m.values()]; };
 /* what is left to deliver on each line of a purchase order (other delivery notes than exceptId) */
 const lineKey = i => [i.label, i.color, i.dimensions].map(x => String(x || '').trim().toLowerCase()).join('|');
 function remainingFor(o, exceptId) {
@@ -137,7 +148,7 @@ const addClient = data => after(() => send('POST', '/clients', data));
 const updateClient = (id, data) => after(() => send('PATCH', `/clients/${enc(id)}`, data));
 function clientUsage(id) {
   const projects = db.projects.filter(p => p.clientId === id);
-  return { projects, quotes: db.quotes.filter(q => q.clientId === id), orders: db.orders.filter(o => o.clientId === id), deliveries: db.deliveries.filter(d => d.clientId === id), payments: db.payments.filter(x => projects.some(p => p.id === x.projectId)) };
+  return { projects, quotes: db.quotes.filter(q => q.clientId === id), orders: db.orders.filter(o => o.clientId === id), deliveries: db.deliveries.filter(d => d.clientId === id), receipts: db.receipts.filter(r => r.clientId === id), payments: db.payments.filter(x => projects.some(p => p.id === x.projectId)) };
 }
 const removeClient = id => after(() => send('DELETE', `/clients/${enc(id)}`));   // projects, payments and quotes are deleted with it
 
@@ -165,6 +176,11 @@ const saveDelivery = data => after(async () => (await send(data.id ? 'PUT' : 'PO
 const setDeliveryStatus = (id, status) => after(() => send('PATCH', `/deliveries/${enc(id)}/status`, { status }));
 const removeDelivery = id => after(() => send('DELETE', `/deliveries/${enc(id)}`));
 
+/* ---------------- reception notes (bons de réception) ---------------- */
+const saveReceipt = data => after(async () => (await send(data.id ? 'PUT' : 'POST', data.id ? `/receipts/${enc(data.id)}` : '/receipts', data)).id);
+const setReceiptStatus = (id, status) => after(() => send('PATCH', `/receipts/${enc(id)}/status`, { status }));
+const removeReceipt = id => after(() => send('DELETE', `/receipts/${enc(id)}`));
+
 /* ---------------- company details (printed on quotes) ---------------- */
 const COMPANY_FIELDS = ['name', 'tagline', 'address', 'city', 'phone', 'email', 'website', 'ice', 'rc', 'if_number', 'patente', 'bank'];
 const saveCompany = data => after(() => send('PUT', '/company', data));
@@ -174,17 +190,17 @@ const sampleCounts = () => ({ clients: db.clients.filter(c => c.sample).length, 
 const removeSampleData = () => after(() => send('DELETE', '/sample-data'));
 
 window.LuxorStore = {
-  STATUSES, STATUS_LABEL, TYPE_LABEL, STEPS, CLIENT_TYPES, QUOTE_STATUS, ORDER_STATUS, PAY_METHODS, DELIVERY_STATUS,
+  STATUSES, STATUS_LABEL, TYPE_LABEL, STEPS, CLIENT_TYPES, QUOTE_STATUS, ORDER_STATUS, PAY_METHODS, DELIVERY_STATUS, RECEIPT_STATUS, CONDITIONS,
   async init(req) { request = req; await refresh(); },
   reload: () => after(() => null),
   loaded: () => loaded,
   get: () => db, subscribe: fn => (subs.add(fn), () => subs.delete(fn)),
-  project, client, quote, order, delivery, remainingFor, metrics, notifications,
+  project, client, quote, order, delivery, receipt, receiptTotals, receiptCompliant, suppliers, remainingFor, metrics, notifications,
   paidFor, depositFor, dueFor, payStatus, progressOf,
   updateStatus, toggleStep, addPayment, addNote, markRead,
   addClient, updateClient, removeClient, clientUsage,
   quoteTotals, quoteExpiry, saveQuote, setQuoteStatus, removeQuote, convertQuote,
-  saveOrder, setOrderStatus, removeOrder, saveDelivery, setDeliveryStatus, removeDelivery,
+  saveOrder, setOrderStatus, removeOrder, saveDelivery, setDeliveryStatus, removeDelivery, saveReceipt, setReceiptStatus, removeReceipt,
   sampleCounts, removeSampleData, saveCompany, COMPANY_FIELDS,
   fmtMAD, parse, iso, today
 };

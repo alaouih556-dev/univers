@@ -227,7 +227,7 @@ function renderRoute(fromStore = false) {
   ui.route = route; ui.id = id; ui.key = key;
   $$('[data-nav]').forEach(a => { const on = a.dataset.nav === route; a.classList.toggle('active', on); if (on) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); });
   const v = $('#view'), y = scrollY;
-  const views = { dashboard: viewDashboard, projects: id ? () => viewProject(id) : viewProjects, clients: id === 'quote' && sub ? () => viewQuote(sub) : id === 'order' && sub ? () => viewOrder(sub) : id === 'delivery' && sub ? () => viewDelivery(sub) : viewClients, catalog: viewCatalog, payments: viewPayments, messages: viewMessages, settings: viewSettings };
+  const views = { dashboard: viewDashboard, projects: id ? () => viewProject(id) : viewProjects, clients: id === 'quote' && sub ? () => viewQuote(sub) : id === 'order' && sub ? () => viewOrder(sub) : id === 'delivery' && sub ? () => viewDelivery(sub) : id === 'receipt' && sub ? () => viewReceipt(sub) : viewClients, catalog: viewCatalog, payments: viewPayments, messages: viewMessages, settings: viewSettings };
   views[route](v);
   document.title = `${NAV.find(([k]) => k === route)[1]} — Univers admin`;
   if (changed && !fromStore) { scrollTo(0, 0); v.focus({ preventScroll: true }); $('.nav-pill .active')?.scrollIntoView({ inline: 'center', block: 'nearest' }); }
@@ -451,7 +451,7 @@ const QS = S.QUOTE_STATUS;
 const qpill = st => `<span class="status q-${st}">${QS[st]}</span>`;
 function viewClients(v) {
   const db = S.get(), q = (ui.cq || '').trim().toLowerCase();
-  const rows = db.clients.map(c => { const ps = db.projects.filter(p => p.clientId === c.id); return { c, ps, qs: db.quotes.filter(x => x.clientId === c.id), os: db.orders.filter(x => x.clientId === c.id), ds: db.deliveries.filter(x => x.clientId === c.id), billed: ps.reduce((s, p) => s + p.totalPrice, 0), due: ps.reduce((s, p) => s + S.dueFor(p), 0), done: ps.some(p => p.status === 'finished') }; })
+  const rows = db.clients.map(c => { const ps = db.projects.filter(p => p.clientId === c.id); return { c, ps, qs: db.quotes.filter(x => x.clientId === c.id), os: db.orders.filter(x => x.clientId === c.id), ds: db.deliveries.filter(x => x.clientId === c.id), rs: db.receipts.filter(x => x.clientId === c.id), billed: ps.reduce((s, p) => s + p.totalPrice, 0), due: ps.reduce((s, p) => s + S.dueFor(p), 0), done: ps.some(p => p.status === 'finished') }; })
     .filter(r => !q || [r.c.name, r.c.city, r.c.email, r.c.phone, S.CLIENT_TYPES[r.c.type]].join(' ').toLowerCase().includes(q))
     .sort((a, b) => b.billed - a.billed || a.c.name.localeCompare(b.c.name));
   const qf = ui.qf || '';
@@ -460,13 +460,13 @@ function viewClients(v) {
   v.innerHTML = `${titleRow('Clients', `<div class="row-gap"><span class="chip"><i class="live"></i>${db.clients.length} clients · ${S.metrics().openQuotes} open quotes</span><button class="btn primary" id="addclient">${ico('plus')}New client</button></div>`)}
     <div class="toolbar tb-clients"><label class="search-pill">${ico('search')}<input type="search" id="csearch" placeholder="Search a client, city, email…" value="${esc(ui.cq || '')}" aria-label="Search clients"></label>
       <button class="btn outline" id="newquote">${ico('file')}New quote</button></div>
-    ${rows.length ? `<section class="client-grid">${rows.map(({ c, ps, qs, os, ds, billed, due, done }, i) => `<article class="card ${['white', 'sable', 'white', 'pastel'][i % 4]} client-card" data-client="${c.id}">
+    ${rows.length ? `<section class="client-grid">${rows.map(({ c, ps, qs, os, ds, rs, billed, due, done }, i) => `<article class="card ${['white', 'sable', 'white', 'pastel'][i % 4]} client-card" data-client="${c.id}">
       <div class="cc-top"><span class="cc-av">${esc(initials(c.name))}</span><div><b>${esc(c.name)}</b><small class="muted">${S.CLIENT_TYPES[c.type]}${c.city ? ' · ' + esc(c.city) : ''}</small></div>
         <div class="cc-act"><button class="icon-btn" data-editclient title="Edit client" aria-label="Edit ${esc(c.name)}">${ico('edit')}</button><button class="icon-btn danger" data-delclient title="Delete client" aria-label="Delete ${esc(c.name)}">${ico('trash')}</button></div></div>
       <ul class="contact compact">${c.phone ? `<li>${ico('phone')}<a href="tel:${esc(c.phone.replace(/\s/g, ''))}">${esc(c.phone)}</a></li>` : ''}${c.email ? `<li>${ico('mail')}<a href="mailto:${esc(c.email)}">${esc(c.email)}</a></li>` : ''}${c.address ? `<li>${ico('pin')}<span>${esc(c.address)}</span></li>` : ''}${!c.phone && !c.email && !c.address ? '<li class="muted">No contact details yet.</li>' : ''}</ul>
       <hr class="dash"><div class="cc-stats"><span><small>Projects</small><b>${ps.length}</b></span><span><small>Billed</small><b>${money(billed)}</b></span><span><small>Due</small><b class="${due ? 'gold-amount' : ''}">${money(due)}</b></span></div>
-      ${ps.length || qs.length || os.length || ds.length ? `<div class="cc-projects">${ps.map(p => `<a href="#/projects/${p.id}">${esc(p.title)} ${pill(p.status)}</a>`).join('')}${qs.map(x => `<a href="#/clients/quote/${x.id}">${ico('file')}<span class="cc-q">${esc(x.number)} · ${money(S.quoteTotals(x).total)}</span> ${qpill(x.status)}</a>`).join('')}${os.map(x => `<a href="#/clients/order/${x.id}">${ico('file')}<span class="cc-q">${esc(x.number)} · ${money(S.quoteTotals(x).total)}</span> ${opill(x.status)}</a>`).join('')}${ds.map(x => `<a href="#/clients/delivery/${x.id}">${ico('file')}<span class="cc-q">${esc(x.number)} · ${fdate(x.date)}</span> ${dpill(x.status)}</a>`).join('')}</div>` : ''}
-      <div class="cc-btns"><button class="btn pill-sm cc-quote" data-quoteclient>${ico('plus')}New quote</button><button class="btn pill-sm cc-quote" data-orderclient>${ico('plus')}Purchase order</button><button class="btn pill-sm cc-quote" data-deliveryclient>${ico('plus')}Delivery note</button></div>
+      ${ps.length || qs.length || os.length || ds.length || rs.length ? `<div class="cc-projects">${ps.map(p => `<a href="#/projects/${p.id}">${esc(p.title)} ${pill(p.status)}</a>`).join('')}${qs.map(x => `<a href="#/clients/quote/${x.id}">${ico('file')}<span class="cc-q">${esc(x.number)} · ${money(S.quoteTotals(x).total)}</span> ${qpill(x.status)}</a>`).join('')}${os.map(x => `<a href="#/clients/order/${x.id}">${ico('file')}<span class="cc-q">${esc(x.number)} · ${money(S.quoteTotals(x).total)}</span> ${opill(x.status)}</a>`).join('')}${ds.map(x => `<a href="#/clients/delivery/${x.id}">${ico('file')}<span class="cc-q">${esc(x.number)} · ${fdate(x.date)}</span> ${dpill(x.status)}</a>`).join('')}${rs.map(x => `<a href="#/clients/receipt/${x.id}">${ico('file')}<span class="cc-q">${esc(x.number)} · ${esc(x.supplier.name)}</span> ${rpill(x.status)}</a>`).join('')}</div>` : ''}
+      <div class="cc-btns"><button class="btn pill-sm cc-quote" data-quoteclient>${ico('plus')}New quote</button><button class="btn pill-sm cc-quote" data-orderclient>${ico('plus')}Purchase order</button><button class="btn pill-sm cc-quote" data-deliveryclient>${ico('plus')}Delivery note</button><button class="btn pill-sm cc-quote" data-receiptclient>${ico('plus')}Reception note</button></div>
       ${done ? '<span class="chg pos cc-done">Completed</span>' : ''}</article>`).join('')}</section>`
       : `<div class="card white empty-state"><p>${q ? 'No client matches your search.' : 'No clients yet.'}</p>${q ? '' : `<button class="btn primary" id="addclient2">${ico('plus')}Add your first client</button>`}</div>`}
     <section class="card white tbl-card quotes-card"><div class="card-head"><h2>Quotes <span class="muted">(devis)</span></h2>
@@ -487,7 +487,13 @@ function viewClients(v) {
       ${db.deliveries.length ? `<div class="tbl-wrap"><table class="ptbl"><thead><tr><th>Number</th><th>Client</th><th>Purchase order</th><th>Date</th><th class="num">Items</th><th>Status</th><th></th></tr></thead><tbody>
       ${db.deliveries.map(x => `<tr><td data-l="Number"><b class="p-title">${esc(x.number)}</b></td><td data-l="Client">${esc(S.client(x.clientId)?.name)}</td><td data-l="Purchase order">${x.orderId && S.order(x.orderId) ? `<a href="#/clients/order/${x.orderId}">${esc(S.order(x.orderId).number)}</a>` : '—'}</td>
         <td data-l="Date">${fdate(x.date)}</td><td data-l="Items" class="num">${x.items.reduce((s, i) => s + i.qty, 0)}</td><td data-l="Status">${dpill(x.status)}</td><td class="act"><a class="btn pill-sm" href="#/clients/delivery/${x.id}">Open</a></td></tr>`).join('')}</tbody></table></div>`
-      : `<p class="empty">No delivery notes yet — open a confirmed purchase order and use “Delivery note”.</p>`}</section>`;
+      : `<p class="empty">No delivery notes yet — open a confirmed purchase order and use “Delivery note”.</p>`}</section>
+    <section class="card white tbl-card quotes-card"><div class="card-head"><h2>Reception notes <span class="muted">(bons de réception)</span></h2><span class="muted small">Goods received from suppliers, per client</span></div>
+      ${db.receipts.length ? `<div class="tbl-wrap"><table class="ptbl"><thead><tr><th>Number</th><th>Client</th><th>Supplier</th><th>Supplier delivery note</th><th>For order</th><th>Date</th><th class="num">Amount (no VAT)</th><th>Status</th><th></th></tr></thead><tbody>
+      ${db.receipts.map(x => `<tr><td data-l="Number"><b class="p-title">${esc(x.number)}</b></td><td data-l="Client">${esc(S.client(x.clientId)?.name)}</td><td data-l="Supplier">${esc(x.supplier.name)}</td><td data-l="Supplier delivery note">${esc(x.supplier.bl || '—')}</td>
+        <td data-l="For order">${x.orderId && S.order(x.orderId) ? `<a href="#/clients/order/${x.orderId}">${esc(S.order(x.orderId).number)}</a>` : '—'}</td>
+        <td data-l="Date">${fdate(x.date)}</td><td data-l="Amount (no VAT)" class="num"><b>${money(S.receiptTotals(x).total)}</b></td><td data-l="Status">${rpill(x.status)}</td><td class="act"><a class="btn pill-sm" href="#/clients/receipt/${x.id}">Open</a></td></tr>`).join('')}</tbody></table></div>`
+      : `<p class="empty">No reception notes yet — use “Reception note” on a client card when goods arrive from a supplier.</p>`}</section>`;
   const add = () => openClientForm(null);
   $('#addclient', v).onclick = add; const a2 = $('#addclient2', v); if (a2) a2.onclick = add;
   $('#newquote', v).onclick = () => db.clients.length ? openQuoteEditor({ clientId: rows[0]?.c.id || db.clients[0].id }) : toast('Add a client first.', 'err');
@@ -501,6 +507,7 @@ function viewClients(v) {
     $('[data-quoteclient]', card).onclick = () => openQuoteEditor({ clientId: c.id });
     $('[data-orderclient]', card).onclick = () => openQuoteEditor({ clientId: c.id }, 'order');
     $('[data-deliveryclient]', card).onclick = () => { const os = deliverableOrders(c.id); if (!os.length) return toast('This client has no confirmed purchase order left to deliver.', 'err'); openDeliveryEditor({ clientId: c.id, orderId: os[0].id }); };
+    $('[data-receiptclient]', card).onclick = () => openReceiptEditor({ clientId: c.id });
   });
 }
 
@@ -529,7 +536,7 @@ function openClientForm(c) {
 }
 function deleteClient(c) {
   const u = S.clientUsage(c.id), paid = u.payments.reduce((s, x) => s + x.amount, 0);
-  const linked = [u.projects.length && `${u.projects.length} project${u.projects.length > 1 ? 's' : ''}`, u.payments.length && `${u.payments.length} payment${u.payments.length > 1 ? 's' : ''} (${money(paid)})`, u.quotes.length && `${u.quotes.length} quote${u.quotes.length > 1 ? 's' : ''}`, u.orders.length && `${u.orders.length} purchase order${u.orders.length > 1 ? 's' : ''}`, u.deliveries.length && `${u.deliveries.length} delivery note${u.deliveries.length > 1 ? 's' : ''}`].filter(Boolean);
+  const linked = [u.projects.length && `${u.projects.length} project${u.projects.length > 1 ? 's' : ''}`, u.payments.length && `${u.payments.length} payment${u.payments.length > 1 ? 's' : ''} (${money(paid)})`, u.quotes.length && `${u.quotes.length} quote${u.quotes.length > 1 ? 's' : ''}`, u.orders.length && `${u.orders.length} purchase order${u.orders.length > 1 ? 's' : ''}`, u.deliveries.length && `${u.deliveries.length} delivery note${u.deliveries.length > 1 ? 's' : ''}`, u.receipts.length && `${u.receipts.length} reception note${u.receipts.length > 1 ? 's' : ''}`].filter(Boolean);
   confirmBox({ title: `Delete “${c.name}”?`, ok: 'Delete client',
     text: linked.length ? `This will also permanently delete <b>${linked.join(', ')}</b> linked to this client. This cannot be undone.` : 'The client will be permanently deleted.',
     run: () => S.removeClient(c.id), done: () => toast(`Client “${c.name}” deleted.`) });
@@ -722,7 +729,7 @@ function viewOrder(id) {
       <div class="row-gap">
         ${q ? `<a class="btn outline" href="#/clients/quote/${q.id}">${ico('file')}Quote ${esc(q.number)}</a>` : ''}
         ${locked ? '' : `<button class="btn outline" id="oedit">${ico('edit')}Edit</button>`}
-        ${o.status === 'cancelled' ? '' : `<button class="btn outline" id="odeliver">${ico('file')}Delivery note</button>`}
+        ${o.status === 'cancelled' ? '' : `<button class="btn outline" id="odeliver">${ico('file')}Delivery note</button><button class="btn outline" id="oreceipt">${ico('file')}Supplier reception</button>`}
         <button class="btn outline" id="oprint">${ico('download')}Print / PDF</button>
         <button class="icon-btn danger" id="odel" title="Delete purchase order" aria-label="Delete purchase order">${ico('trash')}</button>
       </div>
@@ -760,6 +767,7 @@ function viewOrder(id) {
   $('#oprint', v).onclick = () => { document.body.classList.add('print-quote'); window.print(); };
   $('#odel', v).onclick = () => confirmBox({ title: `Delete purchase order ${o.number}?`, text: 'The purchase order will be permanently deleted.', ok: 'Delete purchase order', run: () => S.removeOrder(o.id), done: () => { toast(`Purchase order ${o.number} deleted.`); location.hash = '#/clients'; } });
   const ed = $('#oedit', v); if (ed) ed.onclick = () => openQuoteEditor(o, 'order');
+  const rv = $('#oreceipt', v); if (rv) rv.onclick = () => openReceiptEditor({ clientId: o.clientId, orderId: o.id, items: o.items.map(i => ({ label: i.label + (i.color ? ' — ' + i.color : ''), reference: '', qtyOrdered: i.qty, qty: i.qty, condition: 'ok', unit: '' })) });
   const dv = $('#odeliver', v); if (dv) dv.onclick = () => {
     if (o.status === 'draft') return toast('Confirm the purchase order before delivering it.', 'err');
     if (!S.remainingFor(o).some(i => i.left > 0)) return toast('Everything on this purchase order has already been delivered.', 'err');
@@ -882,6 +890,125 @@ function viewDelivery(id) {
   $('#dprint', v).onclick = () => { document.body.classList.add('print-quote'); window.print(); };
   $('#ddel', v).onclick = () => confirmBox({ title: `Delete delivery note ${d.number}?`, text: 'The delivery note will be permanently deleted. Its items count as not delivered again.', ok: 'Delete delivery note', run: () => S.removeDelivery(d.id), done: () => { toast(`Delivery note ${d.number} deleted.`); location.hash = o ? '#/clients/order/' + o.id : '#/clients'; } });
   const ed = $('#dedit', v); if (ed) ed.onclick = () => openDeliveryEditor(d);
+}
+
+/* ---------------- reception notes (bons de réception) ----------------
+ * INTERNAL document: goods received by Luxor from a SUPPLIER, checked line by line (quantity, condition).
+ * Prices without VAT. Compliant → the supplier can be paid; dispute → payment blocked. */
+const RS = S.RECEIPT_STATUS, CONDS = S.CONDITIONS;
+const rpill = st => `<span class="status r-${st}">${RS[st]}</span>`;
+const FR_COND = { ok: 'Conforme', damaged: 'Endommagé', missing: 'Manquant' };
+function openReceiptEditor(r) {
+  const isNew = !r.id, db = S.get();
+  r = { date: S.iso(S.today()), supplier: { name: '', phone: '', ice: '', bl: '', blDate: '' }, receivedBy: localStorage.getItem('luxor_admin_name') || '', orderId: null, notes: '', items: [{ label: '', reference: '', qtyOrdered: '', qty: 1, condition: 'ok', unit: '' }], ...r };
+  const sup = r.supplier;
+  const m = openModal(`<form id="rform" class="pform qform" novalidate>
+    <div class="m-head"><h2>${isNew ? 'New reception note' : 'Edit reception note ' + esc(r.number)}</h2><button type="button" class="icon-btn" data-close aria-label="Close">${ico('x')}</button></div>
+    <div class="m-body single"><p class="muted small">Goods received from a supplier, checked on arrival. Internal document.</p><div class="fields">
+      <label>Client *<select name="clientId">${db.clients.map(c => `<option value="${c.id}" ${r.clientId === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label>
+      <label>For purchase order<select name="orderId"></select></label>
+      <label>Supplier *<input name="supName" list="rsuppliers" maxlength="120" value="${esc(sup.name)}" placeholder="Supplier company name"></label>
+      <label>Supplier phone<input name="supPhone" maxlength="40" value="${esc(sup.phone)}"></label>
+      <label>Supplier delivery note N°<input name="supBl" maxlength="60" value="${esc(sup.bl)}" placeholder="Number on the supplier's delivery note"></label>
+      <label>Supplier delivery note date<input name="supBlDate" type="date" value="${esc(sup.blDate || '')}"></label>
+      <label>Supplier ICE<input name="supIce" maxlength="40" value="${esc(sup.ice)}"></label>
+      <label>Reception date<input name="date" type="date" value="${esc(r.date)}"></label>
+      <label>Received by<input name="receivedBy" maxlength="120" value="${esc(r.receivedBy)}" placeholder="Person who checked the goods"></label>
+    </div><datalist id="rsuppliers">${S.suppliers().map(x => `<option value="${esc(x.name)}"></option>`).join('')}</datalist>
+    <div class="q-lines"><div class="rc-head"><span>Item</span><span>Reference</span><span class="num">Ordered</span><span class="num">Received</span><span>Condition</span><span class="num">Unit price (excl. VAT)</span><span class="num">Amount</span><span></span></div>
+      <div id="rlines"></div>
+      <div class="row-gap"><button type="button" class="btn outline sm-btn" id="addrline">${ico('plus')}Add line</button></div></div>
+    <div class="q-bottom"><div class="fields"><label class="full">Remarks / reservations<textarea name="notes" rows="3" maxlength="1200" placeholder="e.g. 2 boxes damaged, reported to the driver">${esc(r.notes)}</textarea></label></div>
+      <dl class="q-totals" id="rtotals"></dl></div></div>
+    <p class="form-err" id="rerr" role="alert"></p>
+    <div class="m-foot"><button type="button" class="btn outline" data-close>Cancel</button><button type="submit" class="btn primary">${isNew ? 'Create reception note' : 'Save reception note'}</button></div></form>`);
+  m.querySelector('.modal-card').classList.add('wide');
+  const f = $('#rform', m), lines = $('#rlines', m);
+  const fillOrders = () => { f.orderId.innerHTML = `<option value="">— No purchase order —</option>` + db.orders.filter(o => o.clientId === f.clientId.value && (o.status !== 'cancelled' || o.id === r.orderId)).map(o => `<option value="${o.id}" ${r.orderId === o.id ? 'selected' : ''}>${esc(o.number)} · ${esc(o.title)}</option>`).join(''); };
+  fillOrders(); f.clientId.onchange = () => { r.orderId = null; fillOrders(); };
+  const row = i => `<div class="rc-line">
+    <input class="rc-label" maxlength="200" value="${esc(i.label)}" placeholder="Item received" aria-label="Item">
+    <input class="rc-ref" maxlength="80" value="${esc(i.reference || '')}" placeholder="Ref." aria-label="Reference">
+    <input class="rc-ord" type="number" min="0" step="1" value="${esc(i.qtyOrdered ?? '')}" placeholder="—" aria-label="Ordered">
+    <input class="rc-qty" type="number" min="0" step="1" value="${esc(i.qty)}" aria-label="Received">
+    <select class="rc-cond" aria-label="Condition">${Object.entries(CONDS).map(([k, l]) => `<option value="${k}" ${i.condition === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
+    <input class="rc-unit" type="number" min="0" step="1" value="${esc(i.unit)}" placeholder="0" aria-label="Unit price">
+    <span class="num rc-total"></span><button type="button" class="icon-btn ghost rc-del" aria-label="Remove line">${ico('x')}</button></div>`;
+  lines.innerHTML = r.items.map(row).join('');
+  const read = () => $$('.rc-line', lines).map(x => ({ label: $('.rc-label', x).value, reference: $('.rc-ref', x).value, qtyOrdered: $('.rc-ord', x).value, qty: $('.rc-qty', x).value, condition: $('.rc-cond', x).value, unit: $('.rc-unit', x).value }));
+  const calc = () => {
+    const items = read().map(i => ({ ...i, qty: i.condition === 'missing' ? 0 : +i.qty || 0, unit: +i.unit || 0, qtyOrdered: i.qtyOrdered === '' ? null : +i.qtyOrdered }));
+    const t = S.receiptTotals({ items });
+    $$('.rc-line', lines).forEach((x, n) => { $('.rc-total', x).textContent = money(t.lines[n]); x.classList.toggle('rc-bad', items[n].condition !== 'ok' || (items[n].qtyOrdered != null && items[n].qty < items[n].qtyOrdered)); });
+    const ok = S.receiptCompliant({ items: items.filter(i => i.label) });
+    $('#rtotals', m).innerHTML = `<dt class="tot">Amount received (no VAT)</dt><dd class="tot gold-amount">${money(t.total)}</dd><dt>Check</dt><dd>${ok ? '<span class="status r-validated">Compliant</span>' : '<span class="status r-dispute">Not compliant</span>'}</dd>`;
+  };
+  lines.addEventListener('input', calc); lines.addEventListener('change', calc);
+  lines.addEventListener('click', e => { const b = e.target.closest('.rc-del'); if (!b) return; if ($$('.rc-line', lines).length > 1) b.closest('.rc-line').remove(); calc(); });
+  $('#addrline', m).onclick = () => { lines.insertAdjacentHTML('beforeend', row({ label: '', qty: 1, condition: 'ok', unit: '' })); $$('.rc-label', lines).pop().focus(); calc(); };
+  f.supName.addEventListener('change', () => { const x = S.suppliers().find(s => s.name.toLowerCase() === f.supName.value.trim().toLowerCase()); if (x) { if (!f.supPhone.value) f.supPhone.value = x.phone || ''; if (!f.supIce.value) f.supIce.value = x.ice || ''; } });
+  calc(); (r.clientId ? f.supName : f.clientId).focus();
+  f.onsubmit = async e => {
+    e.preventDefault(); const btn = f.querySelector('[type=submit]'), err = $('#rerr', m);
+    btn.disabled = true; err.textContent = '';
+    try { const id = await S.saveReceipt({ id: r.id, clientId: f.clientId.value, date: f.date.value, receivedBy: f.receivedBy.value, orderId: f.orderId.value || null, notes: f.notes.value,
+        supplier: { name: f.supName.value, phone: f.supPhone.value, ice: f.supIce.value, bl: f.supBl.value, blDate: f.supBlDate.value }, items: read() });
+      closeModal(); toast(isNew ? 'Reception note created as a draft.' : 'Reception note saved.'); location.hash = '#/clients/receipt/' + id; }
+    catch (x) { if (x.message !== 'auth') err.textContent = x.message; btn.disabled = false; }
+  };
+}
+function viewReceipt(id) {
+  const v = $('#view'), r = S.receipt(id);
+  if (!r) { v.innerHTML = `${titleRow('Reception note not found')}<p><a class="btn outline" href="#/clients">${ico('back')}Back to clients</a></p>`; return; }
+  const co = S.get().company || {}, o = r.orderId ? S.order(r.orderId) : null, oc = S.client(r.clientId), t = S.receiptTotals(r), sup = r.supplier;
+  const locked = r.status === 'validated', compliant = S.receiptCompliant(r);
+  const legal = [co.ice && `ICE : ${co.ice}`, co.rc && `RC : ${co.rc}`, co.if_number && `IF : ${co.if_number}`, co.patente && `Patente : ${co.patente}`].filter(Boolean).join(' · ');
+  const verdict = r.status === 'validated' ? '<p class="qd-verdict ok">Réception conforme — paiement du fournisseur autorisé.</p>'
+    : r.status === 'dispute' ? '<p class="qd-verdict ko">Réception non conforme (litige) — paiement du fournisseur bloqué jusqu’à régularisation.</p>'
+    : `<p class="qd-verdict">${compliant ? 'Contrôle : marchandise conforme, en attente de validation.' : 'Contrôle : écarts constatés (quantités ou état), à traiter.'}</p>`;
+  v.innerHTML = `<a class="back-link" href="${o ? '#/clients/order/' + o.id : '#/clients'}">${ico('back')} ${o ? esc(o.number) : 'Clients & quotes'}</a>
+    <div class="title-row detail-title"><div><p class="lbl">Reception note · ${esc(oc?.name || '')} · ${esc(sup.name)}</p><h1>${esc(r.number)}</h1></div>${rpill(r.status)}</div>
+    <div class="quote-bar card white">
+      <div class="seg" role="radiogroup" aria-label="Reception status">${Object.entries(RS).map(([k, l]) => `<button role="radio" aria-checked="${r.status === k}" class="${r.status === k ? 'on' : ''}" data-rstatus="${k}">${l}</button>`).join('')}</div>
+      <div class="row-gap">
+        ${o ? `<a class="btn outline" href="#/clients/order/${o.id}">${ico('file')}${esc(o.number)}</a>` : ''}
+        ${locked ? '' : `<button class="btn outline" id="redit">${ico('edit')}Edit</button>`}
+        <button class="btn outline" id="rprint">${ico('download')}Print / PDF</button>
+        <button class="icon-btn danger" id="rdel" title="Delete reception note" aria-label="Delete reception note">${ico('trash')}</button>
+      </div>
+    </div>
+    <article class="quote-doc order-doc receipt-doc" lang="fr">
+      <header class="qd-head">
+        <div class="qd-co"><img src="${A}luxor-logo-gold.webp" alt="${esc(co.name || 'Luxor Création')}"><div><b>${esc(co.name || 'Luxor Création')}</b>${co.address || co.city ? `<span>${esc([co.address, co.city].filter(Boolean).join(', '))}</span>` : ''}${co.phone ? `<span>Tél. ${esc(co.phone)}</span>` : ''}<span class="qd-internal">Document interne</span></div></div>
+        <div class="qd-title"><h2>BON DE RÉCEPTION</h2><dl><dt>N°</dt><dd>${esc(r.number)}</dd><dt>Date de réception</dt><dd>${frDate(r.date)}</dd>${sup.bl ? `<dt>BL fournisseur</dt><dd>${esc(sup.bl)}</dd>` : ''}${o ? `<dt>Pour commande</dt><dd>${esc(o.number)}</dd>` : ''}</dl></div>
+      </header>
+      <section class="qd-parties">
+        <div class="qd-client"><p class="qd-lbl">Fournisseur</p><b>${esc(sup.name)}</b>${sup.phone ? `<span>Tél. ${esc(sup.phone)}</span>` : ''}${sup.ice ? `<span>ICE : ${esc(sup.ice)}</span>` : ''}<span>Bon de livraison : ${sup.bl ? esc(sup.bl) : 'non communiqué'}${sup.blDate ? ' du ' + frDate(sup.blDate) : ''}</span></div>
+        <div class="qd-object"><p class="qd-lbl">Réception</p><span>Reçu le : ${frDate(r.date)}</span>${r.receivedBy ? `<span>Contrôlé par : ${esc(r.receivedBy)}</span>` : ''}<span>Client : ${oc ? esc(oc.name) : '—'}</span>${o ? `<span>Commande : ${esc(o.number)} — ${esc(o.title)}</span>` : ''}</div>
+      </section>
+      <div class="qd-table-wrap"><table class="qd-table"><thead><tr><th>Désignation</th><th>Réf.</th><th class="num">Qté commandée</th><th class="num">Qté reçue</th><th>État</th><th class="num">P.U.</th><th class="num">Montant</th></tr></thead>
+        <tbody>${r.items.map((i, n) => { const short = i.qtyOrdered != null && i.qty < i.qtyOrdered;
+          return `<tr class="${i.condition !== 'ok' || short ? 'qd-row-bad' : ''}"><td><b>${esc(i.label)}</b></td><td>${esc(i.reference || '—')}</td><td class="num">${i.qtyOrdered == null ? '—' : String(i.qtyOrdered).replace('.', ',')}</td>
+            <td class="num"><b class="${short ? 'qd-short' : ''}">${String(i.qty).replace('.', ',')}</b></td><td class="qd-cond c-${i.condition}">${FR_COND[i.condition]}</td><td class="num">${frMoney(i.unit)}</td><td class="num">${frMoney(t.lines[n])}</td></tr>`; }).join('')}</tbody></table></div>
+      ${verdict}
+      <section class="qd-sum">
+        <div class="qd-notes"><p class="qd-lbl">Observations / réserves</p>${r.notes ? `<p>${esc(r.notes)}</p>` : '<p class="qd-small">Aucune réserve.</p>'}</div>
+        <dl class="qd-totals"><dt class="tot">Montant reçu</dt><dd class="tot">${frMoney(t.total)}</dd><dt class="qd-novat" style="grid-column:1/-1">Montants hors TVA — TVA non appliquée sur ce document.</dt></dl>
+      </section>
+      <section class="qd-signs">
+        <div><p class="qd-lbl">Réceptionnaire${r.receivedBy ? ' — ' + esc(r.receivedBy) : ''}</p><p class="qd-small">Marchandise contrôlée à la réception. Date et signature.</p><div class="qd-box"></div></div>
+        <div><p class="qd-lbl">Livreur du fournisseur</p><p class="qd-small">Nom et signature${r.status === 'dispute' ? ' (réserves notées ci-dessus)' : ''}.</p><div class="qd-box"></div></div>
+      </section>
+      ${legal ? `<footer class="qd-foot">${esc(co.name || 'Luxor Création')} · ${esc(legal)}</footer>` : ''}
+    </article>`;
+  $$('[data-rstatus]', v).forEach(b => b.onclick = () => {
+    if (b.dataset.rstatus === r.status) return;
+    const msg = { draft: 'Reception note back to draft.', validated: 'Reception validated: the supplier can be paid.', dispute: 'Reception marked as a dispute: supplier payment blocked.' }[b.dataset.rstatus];
+    busy(b, S.setReceiptStatus(r.id, b.dataset.rstatus), msg);
+  });
+  $('#rprint', v).onclick = () => { document.body.classList.add('print-quote'); window.print(); };
+  $('#rdel', v).onclick = () => confirmBox({ title: `Delete reception note ${r.number}?`, text: 'The reception note will be permanently deleted.', ok: 'Delete reception note', run: () => S.removeReceipt(r.id), done: () => { toast(`Reception note ${r.number} deleted.`); location.hash = '#/clients'; } });
+  const ed = $('#redit', v); if (ed) ed.onclick = () => openReceiptEditor(r);
 }
 
 /* ---------------- payments ---------------- */

@@ -48,6 +48,11 @@ const mapDelivery = d => ({
   deliveryAddress: d.delivery_address, carrier: d.carrier, notes: d.notes,
   items: (d.delivery_items || []).sort((a, b) => a.sort - b.sort).map(i => ({ id: i.id, label: i.label, qty: +i.qty, qtyOrdered: i.qty_ordered == null ? null : +i.qty_ordered, image: i.image || '', description: i.description || '', material: i.material || '', dimensions: i.dimensions || '', color: i.color || '' }))
 });
+const mapReceipt = r => ({
+  id: r.id, number: r.number, clientId: r.client_id, date: r.date, status: r.status, orderId: r.order_id, receivedBy: r.received_by, notes: r.notes,
+  supplier: { name: r.supplier_name, phone: r.supplier_phone, ice: r.supplier_ice, bl: r.supplier_bl, blDate: r.supplier_bl_date },
+  items: (r.receipt_items || []).sort((a, b) => a.sort - b.sort).map(i => ({ id: i.id, label: i.label, reference: i.reference || '', qtyOrdered: i.qty_ordered == null ? null : +i.qty_ordered, qty: +i.qty, condition: i.condition, unit: i.unit }))
+});
 const mapOrder = o => ({
   id: o.id, number: o.number, clientId: o.client_id, quoteId: o.quote_id, date: o.date, title: o.title, type: o.type, status: o.status,
   discount: +o.discount, vat: o.vat, depositPct: o.deposit_pct, paymentMethod: o.payment_method, deliveryAddress: o.delivery_address,
@@ -56,7 +61,7 @@ const mapOrder = o => ({
 
 async function getAll(token) {
   const o = { token };
-  const [clients, projects, payments, messages, quotes, revenue, company, orders, deliveries] = await Promise.all([
+  const [clients, projects, payments, messages, quotes, revenue, company, orders, deliveries, receipts] = await Promise.all([
     rest('clients?select=*&order=name', o),
     rest('projects?select=*,project_pieces(*),project_events(*)&order=start_date.desc', o),
     rest('payments?select=*&order=date,created_at', o),
@@ -65,11 +70,12 @@ async function getAll(token) {
     rest('revenue_history?select=*', o),
     rest('company?select=*&id=eq.1', o),
     rest('orders?select=*,order_items(*)&order=date.desc,number.desc', o).catch(() => []),   // empty until orders.sql has been run
-    rest('deliveries?select=*,delivery_items(*)&order=date.desc,number.desc', o).catch(() => [])   // empty until deliveries.sql has been run
+    rest('deliveries?select=*,delivery_items(*)&order=date.desc,number.desc', o).catch(() => []),   // empty until deliveries.sql has been run
+    rest('receipts?select=*,receipt_items(*)&order=date.desc,number.desc', o).catch(() => [])   // empty until receipts.sql has been run
   ]);
   return {
     clients: clients.map(mapClient), projects: projects.map(mapProject), payments: payments.map(mapPayment),
-    messages: messages.map(mapMessage), quotes: quotes.map(mapQuote), orders: orders.map(mapOrder), deliveries: deliveries.map(mapDelivery),
+    messages: messages.map(mapMessage), quotes: quotes.map(mapQuote), orders: orders.map(mapOrder), deliveries: deliveries.map(mapDelivery), receipts: receipts.map(mapReceipt),
     revenue: Object.fromEntries(revenue.map(r => [`${r.year}-${r.month}`, { amount: r.amount, sample: r.sample }])),
     company: company[0] || { name: 'Luxor Création' }
   };
@@ -326,6 +332,70 @@ async function setDeliveryStatus(token, did, { status } = {}) {
 }
 const removeDelivery = (token, did) => rest(`deliveries?id=eq.${id(did)}`, { token, method: 'DELETE' });
 
+/* ---------------- reception notes (bons de réception) ----------------
+ * INTERNAL document made by Luxor when goods arrive from a SUPPLIER, after a physical check:
+ * supplier and its delivery note, quantity received and condition of each line, prices without VAT.
+ * "validated" = compliant → the supplier invoice can be paid; "dispute" = missing / damaged → payment blocked.
+ * Each note belongs to a client (goods received for that client), optionally to one of its purchase orders. */
+const RECEIPT_STATUS = ['draft', 'validated', 'dispute'];
+const CONDITIONS = ['ok', 'damaged', 'missing'];
+const receiptsMissing = e => { if (/receipt|schema cache/i.test(e.message)) throw new ApiError(503, 'The database needs an update: run backend/supabase/receipts.sql in Supabase.'); throw e; };
+const isCompliant = items => items.every(i => i.condition === 'ok' && (i.qty_ordered == null || +i.qty >= +i.qty_ordered - 1e-9));
+async function saveReceipt(token, rid, data = {}) {
+  if (rid) {
+    rid = id(rid);
+    const [r] = await rest(`receipts?select=status&id=eq.${rid}`, { token }).catch(receiptsMissing);
+    if (!r) throw new ApiError(404, 'Reception note not found.');
+    if (r.status === 'validated') throw new ApiError(400, 'This reception note is validated and can no longer be edited.');
+  }
+  const sup = data.supplier || {};
+  const supplier_name = clean(sup.name, 120);
+  if (!supplier_name) throw new ApiError(400, 'Enter the supplier name.');
+  if (sup.blDate && !isDate(sup.blDate)) throw new ApiError(400, 'Enter a valid date.');
+  const cid = id(data.clientId || 'x');
+  await clientExists(token, cid);
+  let orderId = null;
+  if (data.orderId) {
+    orderId = id(data.orderId);
+    const [o] = await rest(`orders?select=id,client_id&id=eq.${orderId}`, { token });
+    if (!o) throw new ApiError(404, 'Order not found.');
+    if (o.client_id !== cid) throw new ApiError(400, 'The purchase order belongs to another client.');
+  }
+  const items = (Array.isArray(data.items) ? data.items : []).slice(0, 200).map((i, n) => ({
+    label: clean(i.label, 200), reference: clean(i.reference, 80),
+    qty_ordered: i.qtyOrdered === '' || i.qtyOrdered == null ? null : Math.round(+i.qtyOrdered * 100) / 100,
+    qty: Math.round((+i.qty || 0) * 100) / 100, condition: CONDITIONS.includes(i.condition) ? i.condition : 'ok', unit: Math.max(0, Math.round(+i.unit || 0)), sort: n
+  })).filter(i => i.label);
+  if (!items.length) throw new ApiError(400, 'Add at least one received item.');
+  if (items.some(i => i.qty_ordered != null && !(i.qty_ordered > 0))) throw new ApiError(400, 'The quantity ordered must be above 0.');
+  if (items.some(i => !(i.qty >= 0))) throw new ApiError(400, 'Enter a valid quantity received.');
+  items.forEach(i => { if (i.condition === 'missing') i.qty = 0; });   // missing = nothing received
+  const fields = {
+    client_id: cid, date: isDate(data.date) ? data.date : iso(today()), supplier_name, supplier_phone: clean(sup.phone, 40), supplier_ice: clean(sup.ice, 40),
+    supplier_bl: clean(sup.bl, 60), supplier_bl_date: sup.blDate || null, order_id: orderId, received_by: clean(data.receivedBy, 120), notes: clean(data.notes, 1200)
+  };
+  if (rid) {
+    await rest(`receipts?id=eq.${rid}`, { token, method: 'PATCH', body: fields });
+    await rest(`receipt_items?receipt_id=eq.${rid}`, { token, method: 'DELETE' });
+  } else {
+    const [r] = await rest('receipts', { token, method: 'POST', body: fields, headers: ret }).catch(receiptsMissing);   // number BR-YYYY-NNN set by the database
+    rid = r.id;
+  }
+  await rest('receipt_items', { token, method: 'POST', body: items.map(i => ({ ...i, receipt_id: rid })) });
+  return rid;
+}
+async function setReceiptStatus(token, rid, { status } = {}) {
+  if (!RECEIPT_STATUS.includes(status)) throw new ApiError(400, 'Unknown status.');
+  rid = id(rid);
+  if (status === 'validated') {   // only a compliant reception can be validated (and the supplier paid)
+    const items = await rest(`receipt_items?select=qty,qty_ordered,condition&receipt_id=eq.${rid}`, { token });
+    if (!isCompliant(items)) throw new ApiError(400, 'Some items are missing, short or damaged: mark this reception as a dispute instead.');
+  }
+  const rows = await rest(`receipts?id=eq.${rid}`, { token, method: 'PATCH', body: { status }, headers: ret });
+  if (!rows?.length) throw new ApiError(404, 'Reception note not found.');
+}
+const removeReceipt = (token, rid) => rest(`receipts?id=eq.${id(rid)}`, { token, method: 'DELETE' });
+
 /* ---------------- company details & sample data ---------------- */
 async function saveCompany(token, data = {}) {
   const body = Object.fromEntries(COMPANY_FIELDS.map(k => [k, clean(data[k], k === 'bank' ? 80 : 120)]));
@@ -342,6 +412,6 @@ async function removeSampleData(token) {
 module.exports = {
   getAll, updateStatus, toggleStep, addPayment, addNote, markRead,
   addClient, updateClient, removeClient, saveQuote, setQuoteStatus, removeQuote, convertQuote,
-  saveOrder, setOrderStatus, removeOrder, saveDelivery, setDeliveryStatus, removeDelivery,
+  saveOrder, setOrderStatus, removeOrder, saveDelivery, setDeliveryStatus, removeDelivery, saveReceipt, setReceiptStatus, removeReceipt,
   saveCompany, removeSampleData
 };
