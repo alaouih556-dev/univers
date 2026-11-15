@@ -74,7 +74,10 @@ const FR = {
   'No quote with this status.': 'Aucun devis avec ce statut.', 'No quotes yet — use “New quote” on a client card.': 'Aucun devis pour le moment — utilisez « Nouveau devis » sur une fiche client.',
   'New quote': 'Nouveau devis', 'Edit quote': 'Modifier le devis', 'Create quote': 'Créer le devis', 'Save quote': 'Enregistrer le devis', 'Quote created as a draft.': 'Devis créé en brouillon.', 'Quote saved.': 'Devis enregistré.',
   'Client *': 'Client *', 'Valid for (days)': 'Validité (jours)', 'Description': 'Description', 'Qty': 'Qté', 'Quantity': 'Quantité', 'Unit price (MAD, excl. VAT)': 'Prix unitaire (MAD, HT)', 'Unit price': 'Prix unitaire', 'Line total': 'Total ligne',
-  'Piece or service': 'Pièce ou prestation', 'Product or service': 'Produit ou prestation', 'Choose a catalog product or type a service': 'Choisissez un produit du catalogue ou saisissez une prestation', 'Description shown on the quote': 'Description affichée sur le devis', 'Remove photo': 'Retirer la photo', 'Tip: choose a catalog product to fill its photo, description, details and price.': 'Astuce : choisissez un produit du catalogue pour remplir sa photo, sa description, ses détails et son prix.', 'The database needs an update: run backend/supabase/quote_items_details.sql in Supabase.': 'La base de données doit être mise à jour : exécutez backend/supabase/quote_items_details.sql dans Supabase.', 'Price': 'Prix', 'Remove line': 'Supprimer la ligne', 'Add line': 'Ajouter une ligne',
+  'Piece or service': 'Pièce ou prestation', 'Product or service': 'Produit ou prestation', 'Choose a catalog product or type a service': 'Choisissez un produit du catalogue ou saisissez une prestation', 'Description shown on the quote': 'Description affichée sur le devis', 'Remove photo': 'Retirer la photo', 'From the catalog': 'Du catalogue', 'Other item': 'Autre article', 'Item source': 'Origine de l’article',
+  'Choose a product…': 'Choisir un produit…', 'Loading the catalog…': 'Chargement du catalogue…', 'Catalog product': 'Produit du catalogue',
+  'Item not in the catalog (e.g. custom piece, delivery)': 'Article hors catalogue (ex. pièce sur mesure, livraison)', 'Item not in the catalog (e.g. wood, fabric)': 'Article hors catalogue (ex. bois, tissu)',
+  'From the catalog fills the photo, description, details and price. Other item is for anything not in the catalog.': '« Du catalogue » remplit la photo, la description, les détails et le prix. « Autre article » sert pour tout ce qui n’est pas au catalogue.', 'Tip: choose a catalog product to fill its photo, description, details and price.': 'Astuce : choisissez un produit du catalogue pour remplir sa photo, sa description, ses détails et son prix.', 'The database needs an update: run backend/supabase/quote_items_details.sql in Supabase.': 'La base de données doit être mise à jour : exécutez backend/supabase/quote_items_details.sql dans Supabase.', 'Price': 'Prix', 'Remove line': 'Supprimer la ligne', 'Add line': 'Ajouter une ligne',
   'Discount (%)': 'Remise (%)', 'Deposit / avance (%)': 'Acompte / avance (%)', 'Add VAT (TVA 20 %)': 'Ajouter la TVA (20 %)', 'Notes & conditions': 'Notes & conditions', 'Lead time, delivery, warranty…': 'Délai, livraison, garantie…',
   'e.g. Custom living room set': 'ex. Salon sur mesure', 'e.g. 220 × 90 × 75 cm': 'ex. 220 × 90 × 75 cm',
   'Subtotal (excl. VAT)': 'Sous-total (HT)', 'Net (excl. VAT)': 'Net (HT)', 'VAT 20%': 'TVA 20 %',
@@ -250,7 +253,7 @@ function trText(node) {
   textRec.set(node, { en: v, fr: out }); node.nodeValue = out;
 }
 function trAttrs(el) {
-  if (skip(el)) return;
+  if (!el || el.closest?.('[translate="no"],.quote-doc')) return;   // labels/placeholders of text areas are translated too
   for (const a of ATTRS) {
     const v = el.getAttribute(a); if (!v) continue;
     const rec = attrRec.get(el) || {};

@@ -543,6 +543,16 @@ function deleteClient(c) {
 }
 
 /* ---------------- quotes (devis) ---------------- */
+/* line source on quotes, purchase orders and reception notes: a catalogue product, or any other item */
+function productOptions(sel, label = '') {
+  const groups = new Map();
+  for (const p of state.products) { const k = catName(p.category); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(p); }
+  const known = !sel || state.products.some(p => p.slug === sel);
+  return `<option value="">${state.catalogLoaded ? 'Choose a product…' : 'Loading the catalog…'}</option>${known ? '' : `<option value="${esc(sel)}" selected>${esc(label || sel)}</option>`}`
+    + [...groups].map(([g, ps]) => `<optgroup label="${esc(g)}">${ps.map(p => `<option value="${esc(p.slug)}" ${p.slug === sel ? 'selected' : ''}>${esc(p.name)} · ${money(p.price)}</option>`).join('')}</optgroup>`).join('');
+}
+const srcToggle = cat => `<div class="ql-src" role="radiogroup" aria-label="Item source"><button type="button" role="radio" aria-checked="${cat}" data-src="catalog" class="${cat ? 'on' : ''}">From the catalog</button><button type="button" role="radio" aria-checked="${!cat}" data-src="other" class="${cat ? '' : 'on'}">Other item</button></div>`;
+const setSrcUI = (r, cat) => { r.classList.toggle('is-cat', cat); r.classList.toggle('is-other', !cat); $$('[data-src]', r).forEach(b => { const on = (b.dataset.src === 'catalog') === cat; b.classList.toggle('on', on); b.setAttribute('aria-checked', on); }); };
 async function ensureCatalog() {
   if (state.catalogLoaded) return;
   try { const d = await api.list(); Object.assign(state, { products: d.products, categories: d.categories, colors: d.colors || [], catalogLoaded: true }); } catch {}
@@ -572,7 +582,7 @@ function openQuoteEditor(q, kind = 'quote') {
     <div class="q-lines"><div class="q-lines-head"><span></span><span>Product or service</span><span>Qty</span><span>Unit price (MAD, excl. VAT)</span><span class="num">Line total</span><span></span></div>
       <div id="qlines"></div>
       <div class="row-gap"><button type="button" class="btn outline sm-btn" id="addline">${ico('plus')}Add line</button><span class="muted small" id="catalog-hint"></span></div>
-      <datalist id="qproducts"></datalist><datalist id="qcolors"></datalist></div>
+      <datalist id="qcolors"></datalist></div>
     <div class="q-bottom">
       <div class="fields">
         <label>Discount (%)<input name="discount" type="number" min="0" max="100" step="0.5" value="${esc(q.discount)}"></label>
@@ -588,9 +598,10 @@ function openQuoteEditor(q, kind = 'quote') {
   const f = $('#qform', m), lines = $('#qlines', m);
   /* one line = photo + product/service + qty + price, then description and details (all editable) */
   const thumb = src => src ? `<img src="${esc(assetSrc(src))}" alt="" onerror="this.style.visibility='hidden'">` : ico('img');
-  const lineRow = it => { it = { ...blank, ...it }; return `<div class="q-line" data-slug="${esc(it.productSlug)}" data-image="${esc(it.image)}">
+  const lineRow = it => { it = { ...blank, ...it }; const cat = it.src ? it.src === 'catalog' : (!!it.productSlug || !it.label); return `<div class="q-line ${cat ? 'is-cat' : 'is-other'}" data-slug="${esc(it.productSlug)}" data-image="${esc(it.image)}">
+    ${srcToggle(cat)}
     <div class="ql-main"><span class="ql-thumb">${thumb(it.image)}</span>
-      <input class="ql-label" list="qproducts" maxlength="200" value="${esc(it.label)}" placeholder="Choose a catalog product or type a service" aria-label="Product or service">
+      <span class="ql-pick"><select class="ql-prod" aria-label="Catalog product">${productOptions(it.productSlug, it.label)}</select><input class="ql-label" maxlength="200" value="${esc(it.label)}" placeholder="Item not in the catalog (e.g. custom piece, delivery)" aria-label="Product or service"></span>
       <input class="ql-qty" type="number" min="0.01" step="0.01" value="${esc(it.qty)}" placeholder="Qty" aria-label="Quantity">
       <input class="ql-unit" type="number" min="0" step="1" value="${esc(it.unit)}" placeholder="Price" aria-label="Unit price">
       <span class="ql-total num"></span><button type="button" class="icon-btn ghost ql-del" aria-label="Remove line">${ico('x')}</button></div>
@@ -620,12 +631,22 @@ function openQuoteEditor(q, kind = 'quote') {
     $$('.q-line', lines).forEach((r, i) => $('.ql-total', r).textContent = money(t.lines[i]));
     $('#qtotals', m).innerHTML = `<dt>Subtotal (excl. VAT)</dt><dd>${money(t.subtotal)}</dd>${t.discount ? `<dt>Discount ${+d.discount}%</dt><dd>− ${money(t.discount)}</dd><dt>Net (excl. VAT)</dt><dd>${money(t.net)}</dd>` : ''}${d.vat ? `<dt>VAT 20%</dt><dd>${money(t.vat)}</dd>` : ''}<dt class="tot">Total${d.vat ? ' incl. VAT' : ''}</dt><dd class="tot gold-amount">${money(t.total)}</dd><dt>Deposit ${+d.depositPct || 0}%</dt><dd>${money(t.deposit)}</dd>`;
   };
-  lines.addEventListener('input', e => {
-    if (e.target.classList.contains('ql-label')) { const p = state.products.find(x => x.name === e.target.value.trim()); if (p) fillFromProduct(e.target.closest('.q-line'), p); }
+  lines.addEventListener('input', calc);
+  lines.addEventListener('change', e => {   // a catalogue product was chosen
+    if (!e.target.classList.contains('ql-prod')) return;
+    const r = e.target.closest('.q-line'), p = state.products.find(x => x.slug === e.target.value);
+    if (p) { fillFromProduct(r, p); $('.ql-label', r).value = p.name; } else { r.dataset.slug = ''; $('.ql-label', r).value = ''; }
     calc();
   });
   lines.addEventListener('click', e => {
     const r = e.target.closest('.q-line'); if (!r) return;
+    const src = e.target.closest('[data-src]');
+    if (src) {   // switch between a catalogue product and any other item
+      const cat = src.dataset.src === 'catalog'; if (cat === r.classList.contains('is-cat')) return;
+      setSrcUI(r, cat); r.dataset.slug = '';
+      if (cat) { $('.ql-prod', r).value = ''; $('.ql-label', r).value = ''; $('.ql-prod', r).focus(); } else $('.ql-label', r).focus();
+      calc(); return;
+    }
     if (e.target.closest('.ql-noimg')) { r.dataset.image = ''; $('.ql-thumb', r).innerHTML = thumb(''); e.target.closest('.ql-noimg').remove(); return; }
     if (e.target.closest('.ql-split')) {   // 4 tables → 3 + 1: the new line keeps the product, the colour is left empty to choose
       const d = lineData(r), n = +d.qty || 1, part = n >= 2 ? 1 : n;
@@ -637,12 +658,17 @@ function openQuoteEditor(q, kind = 'quote') {
     if ($$('.q-line', lines).length > 1) r.remove(); else r.outerHTML = lineRow(blank);
     calc();
   });
-  $('#addline', m).onclick = () => { lines.insertAdjacentHTML('beforeend', lineRow(blank)); $$('.ql-label', lines).pop().focus(); calc(); };
+  $('#addline', m).onclick = () => { lines.insertAdjacentHTML('beforeend', lineRow(blank)); $$('.ql-prod', lines).pop().focus(); calc(); };
   f.addEventListener('input', e => { if (!lines.contains(e.target)) calc(); });
   if (isOrder) f.clientId.addEventListener('change', () => { const c = S.client(f.clientId.value); if (c && !f.deliveryAddress.dataset.touched) f.deliveryAddress.value = [c.address, c.city].filter(Boolean).join(', '); });
   if (isOrder) f.deliveryAddress.addEventListener('input', () => { f.deliveryAddress.dataset.touched = '1'; });
   calc();
-  ensureCatalog().then(() => { if (!m.isConnected) return; $('#qproducts', m).innerHTML = state.products.map(p => `<option value="${esc(p.name)}">${esc(catName(p.category))} · ${money(p.price)}</option>`).join(''); $('#qcolors', m).innerHTML = state.colors.map(c => `<option value="${esc(c.name)}"></option>`).join(''); if (state.products.length) $('#catalog-hint', m).textContent = 'Tip: choose a catalog product to fill its photo, description, details and price.'; });
+  ensureCatalog().then(() => {
+    if (!m.isConnected) return;
+    $$('.ql-prod', lines).forEach(sel => { const r = sel.closest('.q-line'); sel.innerHTML = productOptions(r.dataset.slug, $('.ql-label', r).value); });
+    $('#qcolors', m).innerHTML = state.colors.map(c => `<option value="${esc(c.name)}"></option>`).join('');
+    $('#catalog-hint', m).textContent = 'From the catalog fills the photo, description, details and price. Other item is for anything not in the catalog.';
+  });
   (isNew ? f.title : f.title).focus();
   f.onsubmit = async e => {
     e.preventDefault(); const btn = f.querySelector('[type=submit]'), err = $('#qerr', m);
@@ -900,7 +926,7 @@ const rpill = st => `<span class="status r-${st}">${RS[st]}</span>`;
 const FR_COND = { ok: 'Conforme', damaged: 'Endommagé', missing: 'Manquant' };
 function openReceiptEditor(r) {
   const isNew = !r.id, db = S.get();
-  r = { date: S.iso(S.today()), supplier: { name: '', phone: '', ice: '', bl: '', blDate: '' }, receivedBy: localStorage.getItem('luxor_admin_name') || '', orderId: null, notes: '', items: [{ label: '', reference: '', qtyOrdered: '', qty: 1, condition: 'ok', unit: '' }], ...r };
+  r = { date: S.iso(S.today()), supplier: { name: '', phone: '', ice: '', bl: '', blDate: '' }, receivedBy: localStorage.getItem('luxor_admin_name') || '', orderId: null, notes: '', items: [{ label: '', reference: '', qtyOrdered: '', qty: 1, condition: 'ok', unit: '', src: 'other' }], ...r };
   const sup = r.supplier;
   const m = openModal(`<form id="rform" class="pform qform" novalidate>
     <div class="m-head"><h2>${isNew ? 'New reception note' : 'Edit reception note ' + esc(r.number)}</h2><button type="button" class="icon-btn" data-close aria-label="Close">${ico('x')}</button></div>
@@ -926,14 +952,16 @@ function openReceiptEditor(r) {
   const f = $('#rform', m), lines = $('#rlines', m);
   const fillOrders = () => { f.orderId.innerHTML = `<option value="">— No purchase order —</option>` + db.orders.filter(o => o.clientId === f.clientId.value && (o.status !== 'cancelled' || o.id === r.orderId)).map(o => `<option value="${o.id}" ${r.orderId === o.id ? 'selected' : ''}>${esc(o.number)} · ${esc(o.title)}</option>`).join(''); };
   fillOrders(); f.clientId.onchange = () => { r.orderId = null; fillOrders(); };
-  const row = i => `<div class="rc-line">
-    <input class="rc-label" maxlength="200" value="${esc(i.label)}" placeholder="Item received" aria-label="Item">
+  const slugOf = i => i.slug || (i.reference && state.products.find(p => p.sku && p.sku === i.reference)?.slug) || '';
+  const row = i => { const slug = slugOf(i), cat = i.src ? i.src === 'catalog' : !!slug; return `<div class="rc-line ${cat ? 'is-cat' : 'is-other'}" data-slug="${esc(slug)}">
+    ${srcToggle(cat)}
+    <span class="ql-pick"><select class="ql-prod" aria-label="Catalog product">${productOptions(slug, i.label)}</select><input class="rc-label" maxlength="200" value="${esc(i.label)}" placeholder="Item not in the catalog (e.g. wood, fabric)" aria-label="Item"></span>
     <input class="rc-ref" maxlength="80" value="${esc(i.reference || '')}" placeholder="Ref." aria-label="Reference">
     <input class="rc-ord" type="number" min="0" step="1" value="${esc(i.qtyOrdered ?? '')}" placeholder="—" aria-label="Ordered">
     <input class="rc-qty" type="number" min="0" step="1" value="${esc(i.qty)}" aria-label="Received">
     <select class="rc-cond" aria-label="Condition">${Object.entries(CONDS).map(([k, l]) => `<option value="${k}" ${i.condition === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
     <input class="rc-unit" type="number" min="0" step="1" value="${esc(i.unit)}" placeholder="0" aria-label="Unit price">
-    <span class="num rc-total"></span><button type="button" class="icon-btn ghost rc-del" aria-label="Remove line">${ico('x')}</button></div>`;
+    <span class="num rc-total"></span><button type="button" class="icon-btn ghost rc-del" aria-label="Remove line">${ico('x')}</button></div>`; };
   lines.innerHTML = r.items.map(row).join('');
   const read = () => $$('.rc-line', lines).map(x => ({ label: $('.rc-label', x).value, reference: $('.rc-ref', x).value, qtyOrdered: $('.rc-ord', x).value, qty: $('.rc-qty', x).value, condition: $('.rc-cond', x).value, unit: $('.rc-unit', x).value }));
   const calc = () => {
@@ -943,9 +971,23 @@ function openReceiptEditor(r) {
     const ok = S.receiptCompliant({ items: items.filter(i => i.label) });
     $('#rtotals', m).innerHTML = `<dt class="tot">Amount received (no VAT)</dt><dd class="tot gold-amount">${money(t.total)}</dd><dt>Check</dt><dd>${ok ? '<span class="status r-validated">Compliant</span>' : '<span class="status r-dispute">Not compliant</span>'}</dd>`;
   };
-  lines.addEventListener('input', calc); lines.addEventListener('change', calc);
-  lines.addEventListener('click', e => { const b = e.target.closest('.rc-del'); if (!b) return; if ($$('.rc-line', lines).length > 1) b.closest('.rc-line').remove(); calc(); });
-  $('#addrline', m).onclick = () => { lines.insertAdjacentHTML('beforeend', row({ label: '', qty: 1, condition: 'ok', unit: '' })); $$('.rc-label', lines).pop().focus(); calc(); };
+  lines.addEventListener('input', calc);
+  lines.addEventListener('change', e => {
+    if (e.target.classList.contains('ql-prod')) {   // a catalogue product was chosen: name + reference
+      const x = e.target.closest('.rc-line'), p = state.products.find(q => q.slug === e.target.value);
+      x.dataset.slug = p ? p.slug : ''; $('.rc-label', x).value = p ? p.name : ''; if (p) $('.rc-ref', x).value = p.sku || '';
+    }
+    calc();
+  });
+  lines.addEventListener('click', e => {
+    const x = e.target.closest('.rc-line'); if (!x) return;
+    const src = e.target.closest('[data-src]');
+    if (src) { const cat = src.dataset.src === 'catalog'; if (cat === x.classList.contains('is-cat')) return; setSrcUI(x, cat); x.dataset.slug = '';
+      if (cat) { $('.ql-prod', x).value = ''; $('.rc-label', x).value = ''; $('.ql-prod', x).focus(); } else $('.rc-label', x).focus(); calc(); return; }
+    if (e.target.closest('.rc-del')) { if ($$('.rc-line', lines).length > 1) x.remove(); calc(); }
+  });
+  $('#addrline', m).onclick = () => { lines.insertAdjacentHTML('beforeend', row({ label: '', qty: 1, condition: 'ok', unit: '', src: 'other' })); $$('.rc-label', lines).pop().focus(); calc(); };
+  ensureCatalog().then(() => { if (!m.isConnected) return; $$('.rc-line', lines).forEach(x => { const sel = $('.ql-prod', x); if (!x.dataset.slug) { const sl = slugOf({ reference: $('.rc-ref', x).value }); if (sl) { x.dataset.slug = sl; setSrcUI(x, true); } } sel.innerHTML = productOptions(x.dataset.slug, $('.rc-label', x).value); }); });
   f.supName.addEventListener('change', () => { const x = S.suppliers().find(s => s.name.toLowerCase() === f.supName.value.trim().toLowerCase()); if (x) { if (!f.supPhone.value) f.supPhone.value = x.phone || ''; if (!f.supIce.value) f.supIce.value = x.ice || ''; } });
   calc(); (r.clientId ? f.supName : f.clientId).focus();
   f.onsubmit = async e => {
