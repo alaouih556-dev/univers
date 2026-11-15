@@ -107,7 +107,14 @@ create table if not exists public.quote_items (
   label    text not null check (length(label) between 1 and 200),
   qty      numeric(10,2) not null check (qty > 0),
   unit     integer not null check (unit >= 0),          -- unit price, MAD (HT)
-  sort     integer not null default 0
+  sort     integer not null default 0,
+  -- product shown on the quote (filled from the catalogue, editable); see quote_items_details.sql
+  product_slug text not null default '' check (length(product_slug) <= 120),
+  image        text not null default '' check (length(image) <= 500),
+  description  text not null default '' check (length(description) <= 1000),
+  material     text not null default '' check (length(material) <= 200),
+  dimensions   text not null default '' check (length(dimensions) <= 200),
+  color        text not null default '' check (length(color) <= 200)
 );
 create index if not exists quote_items_quote_idx on public.quote_items(quote_id, sort);
 
@@ -188,7 +195,8 @@ begin
   values (q.title, q.client_id, q.type, 'started', 'Created from quote ' || q.number || '.' || case when q.notes <> '' then ' ' || q.notes else '' end, current_date, current_date + 45, total)
   returning id into pid;
   insert into public.project_pieces(project_id, name, qty, material, finish, dimensions, image, sort)
-  select pid, label, qty, '—', '—', '—', 'hero-ivoire.webp', sort from public.quote_items where quote_items.quote_id = q.id;
+  select pid, label, qty, coalesce(nullif(material, ''), '—'), coalesce(nullif(color, ''), '—'), coalesce(nullif(dimensions, ''), '—'), coalesce(nullif(image, ''), 'hero-ivoire.webp'), sort
+  from public.quote_items where quote_items.quote_id = q.id;
   insert into public.project_events(project_id, type, status, text)
   values (pid, 'status', 'started', 'Project created from quote ' || q.number || ' (' || to_char(total, 'FM999G999G999') || ' MAD).');
   update public.quotes set status = 'accepted', project_id = pid where id = q.id;

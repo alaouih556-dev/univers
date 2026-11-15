@@ -11,6 +11,11 @@ const parse = s => { const [y, m, d] = String(s).split('-').map(Number); return 
 const isDate = s => /^\d{4}-\d{2}-\d{2}$/.test(String(s || '')) && !isNaN(parse(s));
 const fmtMAD = n => new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(Math.round(n || 0)) + ' MAD';
 const clean = (v, n) => String(v ?? '').replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, n);
+/* multi-line text (descriptions): keep line breaks, drop other control characters */
+const cleanText = (v, n) => String(v ?? '').replace(/\r\n?/g, '\n').replace(/[\u0000-\u0009\u000b-\u001f]/g, ' ').trim().slice(0, n);
+/* a quote image is a catalogue file name (e.g. canapes.webp) or an https URL (Supabase storage, Unsplash) */
+const safeImage = v => { const s = String(v || '').trim(); return /^https:\/\/[^\s"'<>]{1,490}$/.test(s) || /^[\w-]{1,100}\.(webp|png|jpe?g)$/i.test(s) ? s : ''; };
+const missingColumns = e => { if (/column .*quote_items|schema cache/i.test(e.message)) throw new ApiError(500, 'The database needs an update: run backend/supabase/quote_items_details.sql in Supabase.'); throw e; };
 const id = v => { const s = String(v || ''); if (!/^[A-Za-z0-9-]{1,64}$/.test(s)) throw new ApiError(400, 'Invalid id.'); return s; };
 
 const STATUSES = ['started', 'in_progress', 'finished'];
@@ -35,7 +40,7 @@ const mapMessage = m => ({ id: m.id, from: m.from_name, email: m.email, subject:
 const mapQuote = q => ({
   id: q.id, number: q.number, clientId: q.client_id, date: q.date, validDays: q.valid_days, title: q.title, type: q.type, status: q.status,
   discount: +q.discount, vat: q.vat, depositPct: q.deposit_pct, notes: q.notes, projectId: q.project_id,
-  items: (q.quote_items || []).sort((a, b) => a.sort - b.sort).map(i => ({ id: i.id, label: i.label, qty: +i.qty, unit: i.unit }))
+  items: (q.quote_items || []).sort((a, b) => a.sort - b.sort).map(i => ({ id: i.id, label: i.label, qty: +i.qty, unit: i.unit, productSlug: i.product_slug || '', image: i.image || '', description: i.description || '', material: i.material || '', dimensions: i.dimensions || '', color: i.color || '' }))
 });
 
 async function getAll(token) {
@@ -136,7 +141,11 @@ async function saveQuote(token, qid, data = {}) {
   const [c] = await rest(`clients?select=id&id=eq.${cid}`, { token });
   if (!c) throw new ApiError(400, 'Choose a client.');
   const items = (Array.isArray(data.items) ? data.items : []).slice(0, 100)
-    .map(i => ({ label: clean(i.label, 200), qty: Math.round((+i.qty || 0) * 100) / 100, unit: Math.max(0, Math.round(+i.unit || 0)) })).filter(i => i.label || i.unit);
+    .map(i => ({
+      label: clean(i.label, 200), qty: Math.round((+i.qty || 0) * 100) / 100, unit: Math.max(0, Math.round(+i.unit || 0)),
+      product_slug: clean(i.productSlug, 120), image: safeImage(i.image), description: cleanText(i.description, 1000),
+      material: clean(i.material, 200), dimensions: clean(i.dimensions, 200), color: clean(i.color, 200)
+    })).filter(i => i.label || i.unit);
   if (!items.length) throw new ApiError(400, 'Add at least one line to the quote.');
   if (items.some(i => !i.label)) throw new ApiError(400, 'Every line needs a description.');
   if (items.some(i => !(i.qty > 0))) throw new ApiError(400, 'Every line needs a quantity above 0.');
@@ -156,7 +165,7 @@ async function saveQuote(token, qid, data = {}) {
     const [q] = await rest('quotes', { token, method: 'POST', body: fields, headers: ret });   // number DEV-YYYY-NNN set by the database
     qid = q.id;
   }
-  await rest('quote_items', { token, method: 'POST', body: items.map((i, n) => ({ ...i, quote_id: qid, sort: n })) });
+  await rest('quote_items', { token, method: 'POST', body: items.map((i, n) => ({ ...i, quote_id: qid, sort: n })) }).catch(missingColumns);
   return qid;
 }
 async function setQuoteStatus(token, qid, { status } = {}) {

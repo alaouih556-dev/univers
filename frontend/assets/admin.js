@@ -11,6 +11,7 @@ const esc = t => String(t ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': 
 const mad = S.fmtMAD;
 const money = n => new Intl.NumberFormat(L.numLocale).format(Math.round(n || 0)) + ' MAD';
 const fdate = s => s ? S.parse(s).toLocaleDateString(L.locale, { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
+const assetSrc = n => !n ? '' : /^(https?:|data:)/.test(n) ? n : A + n;   // catalogue file name or full URL
 const img = p => { const n = p._preview || p.image || (p.gallery && p.gallery[0]) || p.fallback || 'hero-ivoire.webp'; return /^(https?:|data:)/.test(n) ? n : A + n; };
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -402,7 +403,7 @@ function viewProject(id) {
         <section class="card white"><div class="card-head"><h2>Project</h2><span class="type t-${p.type}">${S.TYPE_LABEL[p.type]}</span></div>
           <p class="desc">${esc(p.description)}</p>
           <h3 class="sub-h">Furniture pieces <span class="muted">(${p.pieces.reduce((s, x) => s + x.qty, 0)} items)</span></h3>
-          <div class="pieces">${p.pieces.map(x => `<article class="piece"><img src="${A}${esc(x.image)}" alt="${esc(x.name)}" loading="lazy"><div><b>${esc(x.name)}</b><span class="qty">× ${x.qty}</span>
+          <div class="pieces">${p.pieces.map(x => `<article class="piece"><img src="${esc(assetSrc(x.image) || A + 'hero-ivoire.webp')}" alt="${esc(x.name)}" loading="lazy"><div><b>${esc(x.name)}</b><span class="qty">× ${x.qty}</span>
             <dl><dt>Material</dt><dd>${esc(x.material)}</dd><dt>Finish / colour</dt><dd>${esc(x.finish)}</dd><dt>Dimensions</dt><dd>${esc(x.dimensions)}</dd></dl></div></article>`).join('')}</div>
         </section>
         <section class="card white"><div class="card-head"><h2>Production steps</h2><span class="muted small">${prog}% complete</span></div>
@@ -526,6 +527,7 @@ async function ensureCatalog() {
 function openQuoteEditor(q) {
   const isNew = !q.id;
   q = { title: '', type: 'custom', date: S.iso(S.today()), validDays: 30, discount: 0, vat: true, depositPct: 40, notes: '', items: [{ label: '', qty: 1, unit: '' }], ...q };
+  const blank = { label: '', qty: 1, unit: '', productSlug: '', image: '', description: '', material: '', dimensions: '', color: '' };
   const db = S.get();
   const m = openModal(`<form id="qform" class="pform qform" novalidate>
     <div class="m-head"><h2>${isNew ? 'New quote' : 'Edit quote ' + esc(q.number)}</h2><button type="button" class="icon-btn" data-close aria-label="Close">${ico('x')}</button></div>
@@ -536,10 +538,10 @@ function openQuoteEditor(q) {
       <label>Date<input name="date" type="date" value="${esc(q.date)}"></label>
       <label>Valid for (days)<input name="validDays" type="number" min="1" max="365" value="${esc(q.validDays)}"></label>
     </div>
-    <div class="q-lines"><div class="q-lines-head"><span>Description</span><span>Qty</span><span>Unit price (MAD, excl. VAT)</span><span class="num">Line total</span><span></span></div>
+    <div class="q-lines"><div class="q-lines-head"><span></span><span>Product or service</span><span>Qty</span><span>Unit price (MAD, excl. VAT)</span><span class="num">Line total</span><span></span></div>
       <div id="qlines"></div>
       <div class="row-gap"><button type="button" class="btn outline sm-btn" id="addline">${ico('plus')}Add line</button><span class="muted small" id="catalog-hint"></span></div>
-      <datalist id="qproducts"></datalist></div>
+      <datalist id="qproducts"></datalist><datalist id="qcolors"></datalist></div>
     <div class="q-bottom">
       <div class="fields">
         <label>Discount (%)<input name="discount" type="number" min="0" max="100" step="0.5" value="${esc(q.discount)}"></label>
@@ -553,24 +555,52 @@ function openQuoteEditor(q) {
     <div class="m-foot"><button type="button" class="btn outline" data-close>Cancel</button><button type="submit" class="btn primary">${isNew ? 'Create quote' : 'Save quote'}</button></div></form>`);
   m.querySelector('.modal-card').classList.add('wide');
   const f = $('#qform', m), lines = $('#qlines', m);
-  const lineRow = it => `<div class="q-line"><input class="ql-label" list="qproducts" maxlength="200" value="${esc(it.label)}" placeholder="Piece or service" aria-label="Description"><input class="ql-qty" type="number" min="0.01" step="0.01" value="${esc(it.qty)}" placeholder="Qty" aria-label="Quantity"><input class="ql-unit" type="number" min="0" step="1" value="${esc(it.unit)}" placeholder="Price" aria-label="Unit price"><span class="ql-total num"></span><button type="button" class="icon-btn ghost ql-del" aria-label="Remove line">${ico('x')}</button></div>`;
+  /* one line = photo + product/service + qty + price, then description and details (all editable) */
+  const thumb = src => src ? `<img src="${esc(assetSrc(src))}" alt="" onerror="this.style.visibility='hidden'">` : ico('img');
+  const lineRow = it => { it = { ...blank, ...it }; return `<div class="q-line" data-slug="${esc(it.productSlug)}" data-image="${esc(it.image)}">
+    <div class="ql-main"><span class="ql-thumb">${thumb(it.image)}</span>
+      <input class="ql-label" list="qproducts" maxlength="200" value="${esc(it.label)}" placeholder="Choose a catalog product or type a service" aria-label="Product or service">
+      <input class="ql-qty" type="number" min="0.01" step="0.01" value="${esc(it.qty)}" placeholder="Qty" aria-label="Quantity">
+      <input class="ql-unit" type="number" min="0" step="1" value="${esc(it.unit)}" placeholder="Price" aria-label="Unit price">
+      <span class="ql-total num"></span><button type="button" class="icon-btn ghost ql-del" aria-label="Remove line">${ico('x')}</button></div>
+    <div class="ql-more">
+      <textarea class="ql-desc" rows="2" maxlength="1000" placeholder="Description shown on the quote" aria-label="Description">${esc(it.description)}</textarea>
+      <div class="ql-specs"><input class="ql-dim" maxlength="200" value="${esc(it.dimensions)}" placeholder="Dimensions" aria-label="Dimensions"><input class="ql-mat" maxlength="200" value="${esc(it.material)}" placeholder="Material" aria-label="Material"><input class="ql-col" list="qcolors" maxlength="200" value="${esc(it.color)}" placeholder="Colour" aria-label="Colour">
+        ${it.image ? `<button type="button" class="link-btn ql-noimg">Remove photo</button>` : ''}</div>
+    </div></div>`; };
   lines.innerHTML = q.items.map(lineRow).join('');
   const read = () => ({ clientId: f.clientId.value, type: f.type.value, title: f.title.value, date: f.date.value, validDays: f.validDays.value, discount: f.discount.value, depositPct: f.depositPct.value, vat: f.vat.checked, notes: f.notes.value,
-    items: $$('.q-line', lines).map(r => ({ label: $('.ql-label', r).value, qty: $('.ql-qty', r).value, unit: $('.ql-unit', r).value })) });
+    items: $$('.q-line', lines).map(r => ({ label: $('.ql-label', r).value, qty: $('.ql-qty', r).value, unit: $('.ql-unit', r).value, productSlug: r.dataset.slug || '', image: r.dataset.image || '',
+      description: $('.ql-desc', r).value, dimensions: $('.ql-dim', r).value, material: $('.ql-mat', r).value, color: $('.ql-col', r).value })) });
+  /* picking a catalogue product fills the photo, description, details and price of the line */
+  const fillFromProduct = (r, p) => {
+    if (r.dataset.slug === p.slug) return;
+    r.dataset.slug = p.slug; r.dataset.image = p.image || (p.gallery && p.gallery[0]) || p.fallback || '';
+    $('.ql-thumb', r).innerHTML = thumb(r.dataset.image);
+    $('.ql-desc', r).value = p.description || ''; $('.ql-dim', r).value = p.dimensions || ''; $('.ql-mat', r).value = p.material || ''; $('.ql-col', r).value = p.color || '';
+    $('.ql-unit', r).value = p.price ?? '';
+    if (!$('.ql-noimg', r) && r.dataset.image) $('.ql-specs', r).insertAdjacentHTML('beforeend', '<button type="button" class="link-btn ql-noimg">Remove photo</button>');
+  };
   const calc = () => {
     const d = read(), t = S.quoteTotals(d);
     $$('.q-line', lines).forEach((r, i) => $('.ql-total', r).textContent = money(t.lines[i]));
     $('#qtotals', m).innerHTML = `<dt>Subtotal (excl. VAT)</dt><dd>${money(t.subtotal)}</dd>${t.discount ? `<dt>Discount ${+d.discount}%</dt><dd>− ${money(t.discount)}</dd><dt>Net (excl. VAT)</dt><dd>${money(t.net)}</dd>` : ''}${d.vat ? `<dt>VAT 20%</dt><dd>${money(t.vat)}</dd>` : ''}<dt class="tot">Total${d.vat ? ' incl. VAT' : ''}</dt><dd class="tot gold-amount">${money(t.total)}</dd><dt>Deposit ${+d.depositPct || 0}%</dt><dd>${money(t.deposit)}</dd>`;
   };
   lines.addEventListener('input', e => {
-    if (e.target.classList.contains('ql-label')) { const p = state.products.find(x => x.name === e.target.value); const u = $('.ql-unit', e.target.parentNode); if (p && !u.value) u.value = p.price; }
+    if (e.target.classList.contains('ql-label')) { const p = state.products.find(x => x.name === e.target.value.trim()); if (p) fillFromProduct(e.target.closest('.q-line'), p); }
     calc();
   });
-  lines.addEventListener('click', e => { const b = e.target.closest('.ql-del'); if (b) { if ($$('.q-line', lines).length > 1) b.parentNode.remove(); else $$('input', b.parentNode).forEach(i => i.value = i.classList.contains('ql-qty') ? 1 : ''); calc(); } });
-  $('#addline', m).onclick = () => { lines.insertAdjacentHTML('beforeend', lineRow({ label: '', qty: 1, unit: '' })); $$('.ql-label', lines).pop().focus(); calc(); };
+  lines.addEventListener('click', e => {
+    const r = e.target.closest('.q-line'); if (!r) return;
+    if (e.target.closest('.ql-noimg')) { r.dataset.image = ''; $('.ql-thumb', r).innerHTML = thumb(''); e.target.closest('.ql-noimg').remove(); return; }
+    if (!e.target.closest('.ql-del')) return;
+    if ($$('.q-line', lines).length > 1) r.remove(); else r.outerHTML = lineRow(blank);
+    calc();
+  });
+  $('#addline', m).onclick = () => { lines.insertAdjacentHTML('beforeend', lineRow(blank)); $$('.ql-label', lines).pop().focus(); calc(); };
   f.addEventListener('input', e => { if (!lines.contains(e.target)) calc(); });
   calc();
-  ensureCatalog().then(() => { if (!m.isConnected) return; $('#qproducts', m).innerHTML = state.products.map(p => `<option value="${esc(p.name)}">${money(p.price)}</option>`).join(''); if (state.products.length) $('#catalog-hint', m).textContent = 'Tip: type a catalog product name to fill its price.'; });
+  ensureCatalog().then(() => { if (!m.isConnected) return; $('#qproducts', m).innerHTML = state.products.map(p => `<option value="${esc(p.name)}">${esc(catName(p.category))} · ${money(p.price)}</option>`).join(''); $('#qcolors', m).innerHTML = state.colors.map(c => `<option value="${esc(c.name)}"></option>`).join(''); if (state.products.length) $('#catalog-hint', m).textContent = 'Tip: choose a catalog product to fill its photo, description, details and price.'; });
   (isNew ? f.title : f.title).focus();
   f.onsubmit = async e => {
     e.preventDefault(); const btn = f.querySelector('[type=submit]'), err = $('#qerr', m);
@@ -608,7 +638,8 @@ function viewQuote(id) {
       <section class="qd-parties"><div class="qd-client"><p class="qd-lbl">Client</p><b>${esc(c.name || '')}</b>${c.address ? `<span>${esc(c.address)}</span>` : ''}${c.city ? `<span>${esc(c.city)}</span>` : ''}${c.phone ? `<span>Tél. ${esc(c.phone)}</span>` : ''}${c.email ? `<span>${esc(c.email)}</span>` : ''}</div>
         <div class="qd-object"><p class="qd-lbl">Objet</p><b>${esc(q.title)}</b><span>${FR_TYPE[q.type]}</span></div></section>
       <div class="qd-table-wrap"><table class="qd-table"><thead><tr><th>Désignation</th><th class="num">Qté</th><th class="num">P.U. HT</th><th class="num">Total HT</th></tr></thead>
-        <tbody>${q.items.map((i, n) => `<tr><td>${esc(i.label)}</td><td class="num">${String(i.qty).replace('.', ',')}</td><td class="num">${frMoney(i.unit)}</td><td class="num">${frMoney(t.lines[n])}</td></tr>`).join('')}</tbody></table></div>
+        <tbody>${q.items.map((i, n) => { const spec = [i.dimensions && `Dimensions : ${esc(i.dimensions)}`, i.material && `Matière : ${esc(i.material)}`, i.color && `Coloris : ${esc(i.color)}`].filter(Boolean).join(' · ');
+          return `<tr><td><div class="qd-item">${i.image ? `<img class="qd-img" src="${esc(assetSrc(i.image))}" alt="${esc(i.label)}" onerror="this.remove()">` : ''}<div><b>${esc(i.label)}</b>${i.description ? `<p class="qd-desc">${esc(i.description).replace(/\n/g, '<br>')}</p>` : ''}${spec ? `<p class="qd-spec">${spec}</p>` : ''}</div></div></td><td class="num">${String(i.qty).replace('.', ',')}</td><td class="num">${frMoney(i.unit)}</td><td class="num">${frMoney(t.lines[n])}</td></tr>`; }).join('')}</tbody></table></div>
       <section class="qd-sum">
         <div class="qd-notes">${q.notes ? `<p class="qd-lbl">Conditions</p><p>${esc(q.notes)}</p>` : ''}${q.depositPct ? `<p>Acompte de <b>${q.depositPct} %</b> à la commande, soit <b>${frMoney(t.deposit)}</b>. Solde à la livraison.</p>` : ''}${co.bank ? `<p class="qd-lbl">Règlement par virement</p><p>RIB : ${esc(co.bank)}</p>` : ''}</div>
         <dl class="qd-totals"><dt>Total HT</dt><dd>${frMoney(t.subtotal)}</dd>${t.discount ? `<dt>Remise ${String(q.discount).replace('.', ',')} %</dt><dd>− ${frMoney(t.discount)}</dd><dt>Net HT</dt><dd>${frMoney(t.net)}</dd>` : ''}${q.vat ? `<dt>TVA 20 %</dt><dd>${frMoney(t.vat)}</dd>` : '<dt>TVA</dt><dd>Non applicable</dd>'}<dt class="tot">Total ${q.vat ? 'TTC' : 'HT'}</dt><dd class="tot">${frMoney(t.total)}</dd></dl>
