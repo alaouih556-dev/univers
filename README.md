@@ -37,6 +37,13 @@ Produits, catégories, couleurs et photos sont stockés dans **Supabase** (proje
 - `frontend/` contient l'URL et la clé *publishable* Supabase : elles sont publiques par conception. Les clés secrètes restent dans `.env` (jamais commité ni déployé).
 - `backend/supabase/schema.sql` crée tables et règles ; `seed.sql` importe `frontend/assets/catalogue.json` (secours si Supabase est indisponible).
 
+## Données de l'administration (Supabase)
+
+Clients, projets (pièces, étapes, historique), paiements, messages, devis et historique de chiffre d'affaires sont dans Supabase, **visibles uniquement par les administrateurs** (RLS).
+
+- `backend/supabase/admin_schema.sql` : tables + règles métier côté base (numérotation des devis `DEV-AAAA-NNN`, paiement refusé s'il dépasse le reste à payer, historique automatique des changements de statut, `convert_quote()` qui transforme un devis accepté en projet, coordonnées de l'entreprise imprimées sur les devis).
+- `backend/supabase/admin_seed.sql` : données d'exemple (marquées `sample`), supprimables depuis Admin → Settings → « Remove sample data ».
+
 ## Structure
 
 ```

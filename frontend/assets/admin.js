@@ -157,6 +157,20 @@ const api = {
 };
 
 
+/* run a database action: disable the control meanwhile, toast the result or the error */
+async function busy(el, promise, okMsg) {
+  if (el) el.disabled = true;
+  try { const r = await promise; if (okMsg) toast(okMsg); return r; }
+  catch (x) { if (x.message !== 'auth') toast(x.message, 'err'); if (ui.route !== 'catalog') renderRoute(true); }
+  finally { if (el && el.isConnected) el.disabled = false; }
+}
+function confirmBox({ title, text, ok = 'Delete', run, done }) {
+  const m = openModal(`<div class="confirm"><h2>${esc(title)}</h2><p class="muted">${text}</p><p class="form-err" id="cferr"></p>
+    <div class="m-foot"><button type="button" class="btn outline" data-close>Cancel</button><button type="button" class="btn danger" id="cfok">${ico('trash')}${esc(ok)}</button></div></div>`);
+  const b = $('#cfok', m); b.focus();
+  b.onclick = async () => { b.disabled = true; try { await run(); closeModal(); done?.(); } catch (x) { if (x.message !== 'auth') $('#cferr', m).textContent = x.message; b.disabled = false; } };
+}
+
 function toast(msg, kind = 'ok') {
   let box = $('.toasts');
   if (!box) { box = document.createElement('div'); box.className = 'toasts'; box.setAttribute('role', 'status'); document.body.appendChild(box); }
@@ -203,7 +217,15 @@ function showLogin(msg = '') {
 /* ---------------- shell ---------------- */
 const NAV = [['dashboard', 'Dashboard'], ['projects', 'Projects'], ['clients', 'Clients'], ['catalog', 'Catalog'], ['payments', 'Payments'], ['messages', 'Messages'], ['settings', 'Settings']];
 let unsub = null;
-function startApp() {
+async function startApp() {
+  document.body.className = 'is-login';
+  app.innerHTML = `<main class="login"><div class="login-card loading-card"><img class="login-logo" src="${A}luxor-logo-gold.webp" alt="Luxor Création"><p class="login-sub">Loading your data…</p></div></main>`;
+  try { await S.init(sb); }
+  catch (x) {
+    if (x.message === 'auth') return;
+    app.innerHTML = `<main class="login"><div class="login-card"><img class="login-logo" src="${A}luxor-logo-gold.webp" alt="Luxor Création"><h1>Could not load the data</h1><p class="login-sub">${esc(x.message)}</p><button class="btn primary" onclick="location.reload()">Try again</button></div></main>`;
+    return;
+  }
   document.body.className = 'is-app';
   app.innerHTML = `<header class="topbar">
       <a class="brand" href="#/dashboard" aria-label="Univers — dashboard">${logoMark}<span>Univers</span></a>
@@ -258,13 +280,14 @@ function renderNotifs() {
 /* ---------------- router ---------------- */
 function renderRoute(fromStore = false) {
   const h = location.hash.replace(/^#\/?/, '');
-  const [page, id] = h.split('/');
+  const [page, id, sub] = h.split('/');
   const route = NAV.some(([k]) => k === page) ? page : 'dashboard';
-  const changed = route + (id || '') !== ui.route + (ui.id || '');
-  ui.route = route; ui.id = id;
+  const key = [route, id, sub].join('/');
+  const changed = key !== ui.key;
+  ui.route = route; ui.id = id; ui.key = key;
   $$('[data-nav]').forEach(a => { const on = a.dataset.nav === route; a.classList.toggle('active', on); if (on) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); });
   const v = $('#view'), y = scrollY;
-  const views = { dashboard: viewDashboard, projects: id ? () => viewProject(id) : viewProjects, clients: viewClients, catalog: viewCatalog, payments: viewPayments, messages: viewMessages, settings: viewSettings };
+  const views = { dashboard: viewDashboard, projects: id ? () => viewProject(id) : viewProjects, clients: id === 'quote' && sub ? () => viewQuote(sub) : viewClients, catalog: viewCatalog, payments: viewPayments, messages: viewMessages, settings: viewSettings };
   views[route](v);
   document.title = `${NAV.find(([k]) => k === route)[1]} — Univers admin`;
   if (changed && !fromStore) { scrollTo(0, 0); v.focus({ preventScroll: true }); $('.nav-pill .active')?.scrollIntoView({ inline: 'center', block: 'nearest' }); }
@@ -432,7 +455,7 @@ function viewProject(id) {
   if (!p) { v.innerHTML = `${titleRow('Project not found')}<p><a class="btn outline" href="#/projects">${ico('back')}Back to projects</a></p>`; return; }
   const c = S.client(p.clientId), paid = S.paidFor(p), due = S.dueFor(p), dep = S.depositFor(p), ps = S.payStatus(p), prog = S.progressOf(p);
   const payPct = Math.round(paid / (p.totalPrice || 1) * 100);
-  const events = [...p.events].sort((a, b) => b.date.localeCompare(a.date) || 0);
+  const events = [...p.events].sort((a, b) => b.date.localeCompare(a.date) || String(b.at || '').localeCompare(String(a.at || '')));
   v.innerHTML = `<a class="back-link" href="#/projects">${ico('back')} All projects</a>
     <div class="title-row detail-title"><div><p class="lbl">${esc(p.ref)} · ${S.TYPE_LABEL[p.type]}</p><h1>${esc(p.title)}</h1></div>${pill(p.status)}</div>
     <div class="detail-grid">
@@ -449,7 +472,7 @@ function viewProject(id) {
         </section>
         <section class="card white"><div class="card-head"><h2>Notes & progress</h2></div>
           <form class="note-form" id="noteform"><input name="note" maxlength="600" placeholder="Add a progress update…" aria-label="Progress update"><button class="btn primary" type="submit">${ico('plus')}Add</button></form>
-          <ol class="timeline">${events.map(e => `<li class="ev ${e.type}"><span class="ev-dot"></span><div><time>${fdate(e.date)}</time><p>${esc(e.text)}</p></div></li>`).join('')}</ol>
+          <ol class="timeline">${events.map(e => `<li class="ev ev-${e.type}"><span class="ev-dot"></span><div><time>${fdate(e.date)}</time><p>${esc(e.text)}</p></div></li>`).join('')}</ol>
         </section>
       </div>
       <div class="col side">
@@ -471,28 +494,198 @@ function viewProject(id) {
         </section>
       </div>
     </div>`;
-  $$('[data-status]', v).forEach(b => b.onclick = () => { if (b.dataset.status === p.status) return; S.updateStatus(p.id, b.dataset.status); toast(`“${p.title}” is now ${S.STATUS_LABEL[b.dataset.status]}.`); });
-  $$('[data-step]', v).forEach(c => c.onchange = () => S.toggleStep(p.id, c.dataset.step));
-  $('#noteform', v).onsubmit = e => { e.preventDefault(); const t = e.target.note.value.trim(); if (!t) return; S.addNote(p.id, t); toast('Update added to the timeline.'); };
+  $$('[data-status]', v).forEach(b => b.onclick = () => { if (b.dataset.status === p.status) return; busy(b, S.updateStatus(p.id, b.dataset.status), `“${p.title}” is now ${S.STATUS_LABEL[b.dataset.status]}.`); });
+  $$('[data-step]', v).forEach(c => c.onchange = () => busy(c, S.toggleStep(p.id, c.dataset.step)));
+  $('#noteform', v).onsubmit = e => { e.preventDefault(); const t = e.target.note.value.trim(); if (!t) return; busy(e.target.querySelector('button'), S.addNote(p.id, t), 'Update added to the timeline.'); };
   const pf = $('#payform', v);
   if (pf) {
     $('#payfull', v).onclick = () => { pf.amount.value = due; pf.amount.focus(); };
-    pf.onsubmit = e => { e.preventDefault(); try { S.addPayment(p.id, { amount: pf.amount.value, date: pf.date.value, method: pf.method.value }); toast(`Payment of ${money(pf.amount.value)} recorded.`); } catch (x) { $('#payerr', v).textContent = x.message; } };
+    pf.onsubmit = async e => { e.preventDefault(); const amount = pf.amount.value, btn = pf.querySelector('[type=submit]'); btn.disabled = true; $('#payerr', v).textContent = '';
+      try { await S.addPayment(p.id, { amount, date: pf.date.value, method: pf.method.value }); toast(`Payment of ${money(amount)} recorded.`); }
+      catch (x) { if (x.message !== 'auth') { const el = $('#payerr'); if (el) el.textContent = x.message; } btn.disabled = false; } };
   }
 }
 
 /* ---------------- clients ---------------- */
+const QS = S.QUOTE_STATUS;
+const qpill = st => `<span class="status q-${st}">${QS[st]}</span>`;
 function viewClients(v) {
-  const db = S.get();
-  const rows = db.clients.map(c => { const ps = db.projects.filter(p => p.clientId === c.id); return { c, ps, billed: ps.reduce((s, p) => s + p.totalPrice, 0), due: ps.reduce((s, p) => s + S.dueFor(p), 0), done: ps.some(p => p.status === 'finished') }; })
-    .sort((a, b) => b.billed - a.billed);
-  v.innerHTML = `${titleRow('Clients', `<span class="chip"><i class="live"></i>${rows.filter(r => r.done).length} completed clients</span>`)}
-    <section class="client-grid">${rows.map(({ c, ps, billed, due, done }, i) => `<article class="card ${['white', 'sable', 'white', 'pastel'][i % 4]} client-card">
-      <div class="cc-top"><span class="cc-av">${esc(initials(c.name))}</span><div><b>${esc(c.name)}</b><small class="muted">${S.CLIENT_TYPES[c.type]} · ${esc(c.city)}</small></div>${done ? '<span class="chg pos">Completed</span>' : ''}</div>
-      <ul class="contact compact"><li>${ico('phone')}<a href="tel:${esc(c.phone.replace(/\s/g, ''))}">${esc(c.phone)}</a></li><li>${ico('mail')}<a href="mailto:${esc(c.email)}">${esc(c.email)}</a></li></ul>
+  const db = S.get(), q = (ui.cq || '').trim().toLowerCase();
+  const rows = db.clients.map(c => { const ps = db.projects.filter(p => p.clientId === c.id); return { c, ps, qs: db.quotes.filter(x => x.clientId === c.id), billed: ps.reduce((s, p) => s + p.totalPrice, 0), due: ps.reduce((s, p) => s + S.dueFor(p), 0), done: ps.some(p => p.status === 'finished') }; })
+    .filter(r => !q || [r.c.name, r.c.city, r.c.email, r.c.phone, S.CLIENT_TYPES[r.c.type]].join(' ').toLowerCase().includes(q))
+    .sort((a, b) => b.billed - a.billed || a.c.name.localeCompare(b.c.name));
+  const qf = ui.qf || '';
+  const quotes = db.quotes.filter(x => !qf || x.status === qf);
+  v.innerHTML = `${titleRow('Clients', `<div class="row-gap"><span class="chip"><i class="live"></i>${db.clients.length} clients · ${S.metrics().openQuotes} open quotes</span><button class="btn primary" id="addclient">${ico('plus')}New client</button></div>`)}
+    <div class="toolbar tb-clients"><label class="search-pill">${ico('search')}<input type="search" id="csearch" placeholder="Search a client, city, email…" value="${esc(ui.cq || '')}" aria-label="Search clients"></label>
+      <button class="btn outline" id="newquote">${ico('file')}New quote</button></div>
+    ${rows.length ? `<section class="client-grid">${rows.map(({ c, ps, qs, billed, due, done }, i) => `<article class="card ${['white', 'sable', 'white', 'pastel'][i % 4]} client-card" data-client="${c.id}">
+      <div class="cc-top"><span class="cc-av">${esc(initials(c.name))}</span><div><b>${esc(c.name)}</b><small class="muted">${S.CLIENT_TYPES[c.type]}${c.city ? ' · ' + esc(c.city) : ''}</small></div>
+        <div class="cc-act"><button class="icon-btn" data-editclient title="Edit client" aria-label="Edit ${esc(c.name)}">${ico('edit')}</button><button class="icon-btn danger" data-delclient title="Delete client" aria-label="Delete ${esc(c.name)}">${ico('trash')}</button></div></div>
+      <ul class="contact compact">${c.phone ? `<li>${ico('phone')}<a href="tel:${esc(c.phone.replace(/\s/g, ''))}">${esc(c.phone)}</a></li>` : ''}${c.email ? `<li>${ico('mail')}<a href="mailto:${esc(c.email)}">${esc(c.email)}</a></li>` : ''}${c.address ? `<li>${ico('pin')}<span>${esc(c.address)}</span></li>` : ''}${!c.phone && !c.email && !c.address ? '<li class="muted">No contact details yet.</li>' : ''}</ul>
       <hr class="dash"><div class="cc-stats"><span><small>Projects</small><b>${ps.length}</b></span><span><small>Billed</small><b>${money(billed)}</b></span><span><small>Due</small><b class="${due ? 'gold-amount' : ''}">${money(due)}</b></span></div>
-      <div class="cc-projects">${ps.map(p => `<a href="#/projects/${p.id}">${esc(p.title)} ${pill(p.status)}</a>`).join('')}</div></article>`).join('')}</section>`;
+      ${ps.length || qs.length ? `<div class="cc-projects">${ps.map(p => `<a href="#/projects/${p.id}">${esc(p.title)} ${pill(p.status)}</a>`).join('')}${qs.map(x => `<a href="#/clients/quote/${x.id}">${ico('file')}<span class="cc-q">${esc(x.number)} · ${money(S.quoteTotals(x).total)}</span> ${qpill(x.status)}</a>`).join('')}</div>` : ''}
+      <button class="btn pill-sm cc-quote" data-quoteclient>${ico('plus')}New quote</button>
+      ${done ? '<span class="chg pos cc-done">Completed</span>' : ''}</article>`).join('')}</section>`
+      : `<div class="card white empty-state"><p>${q ? 'No client matches your search.' : 'No clients yet.'}</p>${q ? '' : `<button class="btn primary" id="addclient2">${ico('plus')}Add your first client</button>`}</div>`}
+    <section class="card white tbl-card quotes-card"><div class="card-head"><h2>Quotes <span class="muted">(devis)</span></h2>
+      <div class="seg" role="tablist" aria-label="Filter quotes">${[['', 'All'], ...Object.entries(QS)].map(([k, l]) => `<button role="tab" aria-selected="${qf === k}" class="${qf === k ? 'on' : ''}" data-qf="${k}">${l}</button>`).join('')}</div></div>
+      ${quotes.length ? `<div class="tbl-wrap"><table class="ptbl"><thead><tr><th>Number</th><th>Client</th><th>Subject</th><th>Date</th><th>Valid until</th><th class="num">Total (TTC)</th><th>Status</th><th></th></tr></thead><tbody>
+      ${quotes.map(x => { const exp = S.quoteExpiry(x), expired = x.status === 'sent' && S.parse(exp) < S.today(); return `<tr><td data-l="Number"><b class="p-title">${esc(x.number)}</b></td><td data-l="Client">${esc(S.client(x.clientId)?.name)}</td><td data-l="Subject">${esc(x.title)}</td>
+        <td data-l="Date">${fdate(x.date)}</td><td data-l="Valid until" class="${expired ? 'late' : ''}">${fdate(exp)}${expired ? ' · expired' : ''}</td><td data-l="Total (TTC)" class="num"><b>${money(S.quoteTotals(x).total)}</b></td><td data-l="Status">${qpill(x.status)}${x.projectId ? ` <a class="type" href="#/projects/${x.projectId}">Project</a>` : ''}</td>
+        <td class="act"><a class="btn pill-sm" href="#/clients/quote/${x.id}">Open</a></td></tr>`; }).join('')}</tbody></table></div>`
+      : `<p class="empty">${qf ? 'No quote with this status.' : 'No quotes yet — use “New quote” on a client card.'}</p>`}</section>`;
+  const add = () => openClientForm(null);
+  $('#addclient', v).onclick = add; const a2 = $('#addclient2', v); if (a2) a2.onclick = add;
+  $('#newquote', v).onclick = () => db.clients.length ? openQuoteEditor({ clientId: rows[0]?.c.id || db.clients[0].id }) : toast('Add a client first.', 'err');
+  const cs = $('#csearch', v); cs.oninput = debounce(() => { ui.cq = cs.value; viewClients(v); const n = $('#csearch'); n.focus(); n.setSelectionRange(n.value.length, n.value.length); }, 200);
+  $$('[data-qf]', v).forEach(b => b.onclick = () => { ui.qf = b.dataset.qf; viewClients(v); });
+  $$('[data-client]', v).forEach(card => {
+    const c = S.client(card.dataset.client);
+    $('[data-editclient]', card).onclick = () => openClientForm(c);
+    $('[data-delclient]', card).onclick = () => deleteClient(c);
+    $('[data-quoteclient]', card).onclick = () => openQuoteEditor({ clientId: c.id });
+  });
 }
+
+function openClientForm(c) {
+  const isNew = !c; c = c || { name: '', type: 'individual', phone: '', email: '', city: '', address: '' };
+  const m = openModal(`<form id="cform" class="pform" novalidate>
+    <div class="m-head"><h2>${isNew ? 'New client' : 'Edit client'}</h2><button type="button" class="icon-btn" data-close aria-label="Close">${ico('x')}</button></div>
+    <div class="m-body single"><div class="fields">
+      <label class="full">Name *<input name="name" required maxlength="120" value="${esc(c.name)}" placeholder="Person or company name"></label>
+      <label>Client type<select name="type">${Object.entries(S.CLIENT_TYPES).map(([k, l]) => `<option value="${k}" ${c.type === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+      <label>Phone<input name="phone" type="tel" maxlength="40" value="${esc(c.phone)}" placeholder="+212 6…"></label>
+      <label>Email<input name="email" type="email" maxlength="120" value="${esc(c.email)}"></label>
+      <label>City<input name="city" maxlength="80" value="${esc(c.city)}"></label>
+      <label class="full">Address<input name="address" maxlength="200" value="${esc(c.address)}"></label>
+    </div></div>
+    <p class="form-err" id="cerr" role="alert"></p>
+    <div class="m-foot"><button type="button" class="btn outline" data-close>Cancel</button><button type="submit" class="btn primary">${isNew ? 'Add client' : 'Save'}</button></div></form>`);
+  const f = $('#cform', m); f.name.focus();
+  f.onsubmit = async e => {
+    e.preventDefault(); const btn = f.querySelector('[type=submit]'), err = $('#cerr', m);
+    const data = Object.fromEntries(new FormData(f));
+    btn.disabled = true; err.textContent = '';
+    try { if (isNew) await S.addClient(data); else await S.updateClient(c.id, data); closeModal(); toast(isNew ? `Client “${data.name.trim()}” added.` : 'Client updated.'); }
+    catch (x) { if (x.message !== 'auth') err.textContent = x.message; btn.disabled = false; }
+  };
+}
+function deleteClient(c) {
+  const u = S.clientUsage(c.id), paid = u.payments.reduce((s, x) => s + x.amount, 0);
+  const linked = [u.projects.length && `${u.projects.length} project${u.projects.length > 1 ? 's' : ''}`, u.payments.length && `${u.payments.length} payment${u.payments.length > 1 ? 's' : ''} (${money(paid)})`, u.quotes.length && `${u.quotes.length} quote${u.quotes.length > 1 ? 's' : ''}`].filter(Boolean);
+  confirmBox({ title: `Delete “${c.name}”?`, ok: 'Delete client',
+    text: linked.length ? `This will also permanently delete <b>${linked.join(', ')}</b> linked to this client. This cannot be undone.` : 'The client will be permanently deleted.',
+    run: () => S.removeClient(c.id), done: () => toast(`Client “${c.name}” deleted.`) });
+}
+
+/* ---------------- quotes (devis) ---------------- */
+async function ensureCatalog() {
+  if (state.catalogLoaded) return;
+  try { const d = await api.list(); Object.assign(state, { products: d.products, categories: d.categories, colors: d.colors || [], catalogLoaded: true }); } catch {}
+}
+function openQuoteEditor(q) {
+  const isNew = !q.id;
+  q = { title: '', type: 'custom', date: S.iso(S.today()), validDays: 30, discount: 0, vat: true, depositPct: 40, notes: '', items: [{ label: '', qty: 1, unit: '' }], ...q };
+  const db = S.get();
+  const m = openModal(`<form id="qform" class="pform qform" novalidate>
+    <div class="m-head"><h2>${isNew ? 'New quote' : 'Edit quote ' + esc(q.number)}</h2><button type="button" class="icon-btn" data-close aria-label="Close">${ico('x')}</button></div>
+    <div class="m-body single"><div class="fields">
+      <label>Client *<select name="clientId">${db.clients.map(c => `<option value="${c.id}" ${q.clientId === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label>
+      <label>Type<select name="type">${Object.entries(S.TYPE_LABEL).map(([k, l]) => `<option value="${k}" ${q.type === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+      <label class="full">Subject<input name="title" maxlength="140" value="${esc(q.title)}" placeholder="e.g. Custom living room set"></label>
+      <label>Date<input name="date" type="date" value="${esc(q.date)}"></label>
+      <label>Valid for (days)<input name="validDays" type="number" min="1" max="365" value="${esc(q.validDays)}"></label>
+    </div>
+    <div class="q-lines"><div class="q-lines-head"><span>Description</span><span>Qty</span><span>Unit price (MAD, excl. VAT)</span><span class="num">Line total</span><span></span></div>
+      <div id="qlines"></div>
+      <div class="row-gap"><button type="button" class="btn outline sm-btn" id="addline">${ico('plus')}Add line</button><span class="muted small" id="catalog-hint"></span></div>
+      <datalist id="qproducts"></datalist></div>
+    <div class="q-bottom">
+      <div class="fields">
+        <label>Discount (%)<input name="discount" type="number" min="0" max="100" step="0.5" value="${esc(q.discount)}"></label>
+        <label>Deposit / avance (%)<input name="depositPct" type="number" min="0" max="100" value="${esc(q.depositPct)}"></label>
+        <div class="checks full"><label class="chk"><input type="checkbox" name="vat" ${q.vat ? 'checked' : ''}><span>Add VAT (TVA 20 %)</span></label></div>
+        <label class="full">Notes & conditions<textarea name="notes" rows="3" maxlength="1200" placeholder="Lead time, delivery, warranty…">${esc(q.notes)}</textarea></label>
+      </div>
+      <dl class="q-totals" id="qtotals"></dl>
+    </div></div>
+    <p class="form-err" id="qerr" role="alert"></p>
+    <div class="m-foot"><button type="button" class="btn outline" data-close>Cancel</button><button type="submit" class="btn primary">${isNew ? 'Create quote' : 'Save quote'}</button></div></form>`);
+  m.querySelector('.modal-card').classList.add('wide');
+  const f = $('#qform', m), lines = $('#qlines', m);
+  const lineRow = it => `<div class="q-line"><input class="ql-label" list="qproducts" maxlength="200" value="${esc(it.label)}" placeholder="Piece or service" aria-label="Description"><input class="ql-qty" type="number" min="0.01" step="0.01" value="${esc(it.qty)}" aria-label="Quantity"><input class="ql-unit" type="number" min="0" step="1" value="${esc(it.unit)}" aria-label="Unit price"><span class="ql-total num"></span><button type="button" class="icon-btn ghost ql-del" aria-label="Remove line">${ico('x')}</button></div>`;
+  lines.innerHTML = q.items.map(lineRow).join('');
+  const read = () => ({ clientId: f.clientId.value, type: f.type.value, title: f.title.value, date: f.date.value, validDays: f.validDays.value, discount: f.discount.value, depositPct: f.depositPct.value, vat: f.vat.checked, notes: f.notes.value,
+    items: $$('.q-line', lines).map(r => ({ label: $('.ql-label', r).value, qty: $('.ql-qty', r).value, unit: $('.ql-unit', r).value })) });
+  const calc = () => {
+    const d = read(), t = S.quoteTotals(d);
+    $$('.q-line', lines).forEach((r, i) => $('.ql-total', r).textContent = money(t.lines[i]));
+    $('#qtotals', m).innerHTML = `<dt>Subtotal (excl. VAT)</dt><dd>${money(t.subtotal)}</dd>${t.discount ? `<dt>Discount ${+d.discount}%</dt><dd>− ${money(t.discount)}</dd><dt>Net (excl. VAT)</dt><dd>${money(t.net)}</dd>` : ''}${d.vat ? `<dt>VAT 20%</dt><dd>${money(t.vat)}</dd>` : ''}<dt class="tot">Total${d.vat ? ' incl. VAT' : ''}</dt><dd class="tot gold-amount">${money(t.total)}</dd><dt>Deposit ${+d.depositPct || 0}%</dt><dd>${money(t.deposit)}</dd>`;
+  };
+  lines.addEventListener('input', e => {
+    if (e.target.classList.contains('ql-label')) { const p = state.products.find(x => x.name === e.target.value); const u = $('.ql-unit', e.target.parentNode); if (p && !u.value) u.value = p.price; }
+    calc();
+  });
+  lines.addEventListener('click', e => { const b = e.target.closest('.ql-del'); if (b) { if ($$('.q-line', lines).length > 1) b.parentNode.remove(); else $$('input', b.parentNode).forEach(i => i.value = i.classList.contains('ql-qty') ? 1 : ''); calc(); } });
+  $('#addline', m).onclick = () => { lines.insertAdjacentHTML('beforeend', lineRow({ label: '', qty: 1, unit: '' })); $$('.ql-label', lines).pop().focus(); calc(); };
+  f.addEventListener('input', e => { if (!lines.contains(e.target)) calc(); });
+  calc();
+  ensureCatalog().then(() => { if (!m.isConnected) return; $('#qproducts', m).innerHTML = state.products.map(p => `<option value="${esc(p.name)}">${money(p.price)}</option>`).join(''); if (state.products.length) $('#catalog-hint', m).textContent = 'Tip: type a catalog product name to fill its price.'; });
+  (isNew ? f.title : f.title).focus();
+  f.onsubmit = async e => {
+    e.preventDefault(); const btn = f.querySelector('[type=submit]'), err = $('#qerr', m);
+    btn.disabled = true; err.textContent = '';
+    try { const id = await S.saveQuote({ ...read(), id: q.id }); closeModal(); toast(isNew ? 'Quote created as a draft.' : 'Quote saved.'); location.hash = '#/clients/quote/' + id; }
+    catch (x) { if (x.message !== 'auth') err.textContent = x.message; btn.disabled = false; }
+  };
+}
+
+/* printable quote document (in French, for the client) */
+const frMoney = n => new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n || 0) + ' MAD';
+const frDate = s => S.parse(s).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+const FR_TYPE = { catalog: 'Commande catalogue', custom: 'Fabrication sur mesure', interior: 'Architecture d’intérieur' };
+function viewQuote(id) {
+  const v = $('#view'), q = S.quote(id);
+  if (!q) { v.innerHTML = `${titleRow('Quote not found')}<p><a class="btn outline" href="#/clients">${ico('back')}Back to clients</a></p>`; return; }
+  const c = S.client(q.clientId) || {}, co = S.get().company || {}, t = S.quoteTotals(q), exp = S.quoteExpiry(q), locked = !!(q.projectId && S.project(q.projectId));
+  const legal = [co.ice && `ICE : ${co.ice}`, co.rc && `RC : ${co.rc}`, co.if_number && `IF : ${co.if_number}`, co.patente && `Patente : ${co.patente}`].filter(Boolean).join(' · ');
+  v.innerHTML = `<a class="back-link" href="#/clients">${ico('back')} Clients & quotes</a>
+    <div class="title-row detail-title"><div><p class="lbl">Quote · ${esc(c.name || '')}</p><h1>${esc(q.number)}</h1></div>${qpill(q.status)}</div>
+    <div class="quote-bar card white">
+      <div class="seg" role="radiogroup" aria-label="Quote status">${Object.entries(QS).map(([k, l]) => `<button role="radio" aria-checked="${q.status === k}" class="${q.status === k ? 'on' : ''}" data-qstatus="${k}" ${locked ? 'disabled' : ''}>${l}</button>`).join('')}</div>
+      <div class="row-gap">
+        ${locked ? `<a class="btn outline" href="#/projects/${q.projectId}">${ico('arrow')}Open project</a>` : `<button class="btn outline" id="qedit">${ico('edit')}Edit</button><button class="btn primary" id="qconvert">${ico('check')}Accept & create project</button>`}
+        <button class="btn outline" id="qprint">${ico('download')}Print / PDF</button>
+        <button class="icon-btn danger" id="qdel" title="Delete quote" aria-label="Delete quote">${ico('trash')}</button>
+      </div>
+    </div>
+    ${!co.ice && !co.address ? `<p class="hint-bar">${ico('info')} Add your company address, ICE and RC in <a href="#/settings">Settings</a> so they appear on the quote.</p>` : ''}
+    <article class="quote-doc" lang="fr">
+      <header class="qd-head">
+        <div class="qd-co"><img src="${A}luxor-logo-gold.webp" alt="${esc(co.name || 'Luxor Création')}"><div><b>${esc(co.name || 'Luxor Création')}</b>${co.tagline ? `<span>${esc(co.tagline)}</span>` : ''}${co.address || co.city ? `<span>${esc([co.address, co.city].filter(Boolean).join(', '))}</span>` : ''}${co.phone ? `<span>Tél. ${esc(co.phone)}</span>` : ''}${co.email ? `<span>${esc(co.email)}</span>` : ''}${co.website ? `<span>${esc(co.website)}</span>` : ''}</div></div>
+        <div class="qd-title"><h2>DEVIS</h2><dl><dt>N°</dt><dd>${esc(q.number)}</dd><dt>Date</dt><dd>${frDate(q.date)}</dd><dt>Valable jusqu’au</dt><dd>${frDate(exp)}</dd></dl></div>
+      </header>
+      <section class="qd-parties"><div class="qd-client"><p class="qd-lbl">Client</p><b>${esc(c.name || '')}</b>${c.address ? `<span>${esc(c.address)}</span>` : ''}${c.city ? `<span>${esc(c.city)}</span>` : ''}${c.phone ? `<span>Tél. ${esc(c.phone)}</span>` : ''}${c.email ? `<span>${esc(c.email)}</span>` : ''}</div>
+        <div class="qd-object"><p class="qd-lbl">Objet</p><b>${esc(q.title)}</b><span>${FR_TYPE[q.type]}</span></div></section>
+      <table class="qd-table"><thead><tr><th>Désignation</th><th class="num">Qté</th><th class="num">P.U. HT</th><th class="num">Total HT</th></tr></thead>
+        <tbody>${q.items.map((i, n) => `<tr><td>${esc(i.label)}</td><td class="num">${String(i.qty).replace('.', ',')}</td><td class="num">${frMoney(i.unit)}</td><td class="num">${frMoney(t.lines[n])}</td></tr>`).join('')}</tbody></table>
+      <section class="qd-sum">
+        <div class="qd-notes">${q.notes ? `<p class="qd-lbl">Conditions</p><p>${esc(q.notes)}</p>` : ''}${q.depositPct ? `<p>Acompte de <b>${q.depositPct} %</b> à la commande, soit <b>${frMoney(t.deposit)}</b>. Solde à la livraison.</p>` : ''}${co.bank ? `<p class="qd-lbl">Règlement par virement</p><p>RIB : ${esc(co.bank)}</p>` : ''}</div>
+        <dl class="qd-totals"><dt>Total HT</dt><dd>${frMoney(t.subtotal)}</dd>${t.discount ? `<dt>Remise ${String(q.discount).replace('.', ',')} %</dt><dd>− ${frMoney(t.discount)}</dd><dt>Net HT</dt><dd>${frMoney(t.net)}</dd>` : ''}${q.vat ? `<dt>TVA 20 %</dt><dd>${frMoney(t.vat)}</dd>` : '<dt>TVA</dt><dd>Non applicable</dd>'}<dt class="tot">Total ${q.vat ? 'TTC' : 'HT'}</dt><dd class="tot">${frMoney(t.total)}</dd></dl>
+      </section>
+      <section class="qd-sign"><div><p class="qd-lbl">Bon pour accord</p><p class="qd-small">Date, signature et cachet du client, précédés de la mention « Bon pour accord ».</p></div><div class="qd-box"></div></section>
+      ${legal ? `<footer class="qd-foot">${esc(co.name || 'Luxor Création')} · ${esc(legal)}</footer>` : ''}
+    </article>`;
+  $$('[data-qstatus]', v).forEach(b => b.onclick = () => { if (b.dataset.qstatus !== q.status) busy(b, S.setQuoteStatus(q.id, b.dataset.qstatus), `Quote marked as ${QS[b.dataset.qstatus].toLowerCase()}.`); });
+  $('#qprint', v).onclick = () => { document.body.classList.add('print-quote'); window.print(); };
+  $('#qdel', v).onclick = () => confirmBox({ title: `Delete quote ${q.number}?`, text: locked ? 'The quote will be deleted. The project created from it is kept.' : 'The quote will be permanently deleted.', ok: 'Delete quote', run: () => S.removeQuote(q.id), done: () => { toast(`Quote ${q.number} deleted.`); location.hash = '#/clients'; } });
+  const ed = $('#qedit', v); if (ed) ed.onclick = () => openQuoteEditor(q);
+  const cv = $('#qconvert', v); if (cv) cv.onclick = () => confirmBox({ title: 'Accept this quote?', ok: 'Accept & create project',
+    text: `The quote will be marked as accepted and a new project “${esc(q.title)}” (${money(t.total)}) will be created for ${esc(c.name || '')}.`,
+    run: async () => { ui.newProject = await S.convertQuote(q.id); }, done: () => { toast('Project created from the quote.'); location.hash = '#/projects/' + ui.newProject; } });
+}
+window.addEventListener('afterprint', () => document.body.classList.remove('print-quote'));
 
 /* ---------------- payments ---------------- */
 function viewPayments(v) {
@@ -518,7 +711,7 @@ function viewPayments(v) {
 function viewMessages(v) {
   const db = S.get(), list = [...db.messages].sort((a, b) => b.date.localeCompare(a.date));
   const sel = list.find(x => x.id === ui.msg) || list[0];
-  if (sel && !sel.read) { setTimeout(() => S.markRead(sel.id), 400); }
+  if (sel && !sel.read) { setTimeout(() => S.markRead(sel.id).catch(() => {}), 400); }
   v.innerHTML = `${titleRow('Messages', `<span class="chip"><i class="live"></i>${list.filter(x => !x.read).length} unread</span>`)}
     <section class="inbox">
       <div class="card white inbox-list">${list.map(x => `<button class="msg ${x.read ? '' : 'unread'} ${sel && x.id === sel.id ? 'on' : ''}" data-msg="${x.id}"><span class="cc-av sm">${esc(initials(x.from))}</span><span class="msg-t"><b>${esc(x.from)}</b><span>${esc(x.subject)}</span></span><time>${fdate(x.date)}</time></button>`).join('')}</div>
@@ -526,7 +719,7 @@ function viewMessages(v) {
         <div class="row-gap"><a class="btn primary" href="mailto:${esc(sel.email)}?subject=${encodeURIComponent('Re: ' + sel.subject)}">${ico('mail')}Reply by email</a><button class="btn outline" id="unread">Mark as unread</button></div></article>` : ''}
     </section>`;
   $$('[data-msg]', v).forEach(b => b.onclick = () => { ui.msg = b.dataset.msg; viewMessages(v); });
-  const u = $('#unread', v); if (u) u.onclick = () => { ui.msg = sel.id; S.markRead(sel.id, false); };
+  const u = $('#unread', v); if (u) u.onclick = () => { ui.msg = sel.id; busy(u, S.markRead(sel.id, false), 'Marked as unread.'); };
 }
 
 /* ---------------- settings ---------------- */
@@ -542,8 +735,11 @@ function viewSettings(v) {
         <label class="fld">New password<input name="pw" type="password" minlength="10" autocomplete="new-password" required></label>
         <label class="fld">Confirm<input name="pw2" type="password" minlength="10" autocomplete="new-password" required></label>
         <p class="form-err" id="pwerr" role="alert"></p><button class="btn primary" type="submit">Update password</button></form>
-      <div class="card sable"><h2>Demo data</h2><p class="small">Projects, clients, payments and messages are sample data for now (saved in this browser). The catalog is live from Supabase.</p>
-        <button class="btn outline" id="resetdemo">Reset sample data</button></div>
+      <form class="card white company-card" id="companyform"><h2>Company details</h2><p class="muted small">Printed on your quotes (devis).</p>
+        <div class="fields">${[['name', 'Company name *'], ['tagline', 'Tagline'], ['address', 'Address'], ['city', 'City'], ['phone', 'Phone'], ['email', 'Email'], ['website', 'Website'], ['ice', 'ICE'], ['rc', 'RC (registre de commerce)'], ['if_number', 'IF (identifiant fiscal)'], ['patente', 'Patente'], ['bank', 'RIB (bank account)']]
+          .map(([k, l]) => `<label class="${k === 'address' || k === 'bank' ? 'full' : ''}">${l}<input name="${k}" maxlength="${k === 'bank' ? 80 : 120}" value="${esc((S.get().company || {})[k] || '')}"></label>`).join('')}</div>
+        <p class="form-err" id="coerr" role="alert"></p><button class="btn primary" type="submit">Save company details</button></form>
+      <div class="card sable"><h2>Sample data</h2>${(() => { const c = S.sampleCounts(); return c.clients || c.messages ? `<p class="small">The database still contains sample data: <b>${c.clients} clients</b> (with their projects, payments and quotes) and <b>${c.messages} messages</b>. Remove it when you start entering your real clients.</p><button class="btn outline" id="resetdemo">${ico('trash')}Remove sample data</button>` : '<p class="small">No sample data left — everything here is your real data.</p>'; })()}</div>
     </section>`;
   $('#profileform', v).onsubmit = e => { e.preventDefault(); const n = e.target.name.value.trim() || 'Luxor Création'; localStorage.setItem(NAME_KEY, n); $('#avatar').textContent = initials(n); $('.pm-name').textContent = n; toast('Profile saved.'); };
   $$('[data-theme-set]', v).forEach(b => b.onclick = () => { setTheme(b.dataset.themeSet); viewSettings(v); });
@@ -555,7 +751,11 @@ function viewSettings(v) {
     try { await sb('/auth/v1/user', { method: 'PUT', body: { password: f.pw.value } }); f.reset(); toast('Password updated.'); }
     catch (x) { if (x.message !== 'auth') err.textContent = x.message; }
   };
-  $('#resetdemo', v).onclick = () => { if (confirm('Reset all sample projects, payments and messages?')) { S.reset(); toast('Sample data reset.'); } };
+  $('#companyform', v).onsubmit = async e => { e.preventDefault(); const f = e.target, err = $('#coerr', v), b = f.querySelector('[type=submit]'); b.disabled = true; err.textContent = '';
+    try { await S.saveCompany(Object.fromEntries(new FormData(f))); toast('Company details saved.'); } catch (x) { if (x.message !== 'auth') err.textContent = x.message; } b.disabled = false; };
+  const rd = $('#resetdemo', v);
+  if (rd) rd.onclick = () => confirmBox({ title: 'Remove all sample data?', text: 'Sample clients and everything linked to them (projects, payments, quotes), sample messages and sample revenue history will be deleted from the database. Your own data is kept.', ok: 'Remove sample data',
+    run: () => S.removeSampleData(), done: () => { toast('Sample data removed.'); viewSettings($('#view')); } });
 }
 
 function showHelp() {
@@ -565,7 +765,8 @@ function showHelp() {
       <p><b>Projects</b> — open <b>View details</b> to change the status, tick production steps, record payments and add progress notes. Every change updates the dashboard instantly.</p>
       <p><b>Catalog</b> — the products shown on the public website (live).</p>
       <p><b>Dark mode</b> — moon icon in the floating toolbar.</p>
-      <p class="muted small">Projects, clients, payments and messages use sample data until they are connected to the database.</p>
+      <p><b>Clients</b> — add, edit or delete clients and prepare quotes (devis). An accepted quote becomes a project in one click.</p>
+      <p class="muted small">All data is stored in your Supabase database and visible only to admin accounts.</p>
     </div>`);
   return m;
 }
