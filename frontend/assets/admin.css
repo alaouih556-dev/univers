@@ -133,6 +133,13 @@ body.is-login{background:var(--bg)}
 .seg button{display:inline-flex;align-items:center;gap:6px;height:36px;padding:0 16px;border:0;border-radius:999px;background:transparent;color:var(--muted);font-weight:600;font-size:14px;cursor:pointer;white-space:nowrap;transition:.2s}
 .seg button:hover{color:var(--text)}
 .seg button.on{background:var(--vert);color:var(--ivoire)}
+.lang-seg{display:inline-flex;gap:2px;padding:3px;border-radius:999px;border:1px solid var(--line);background:var(--card);width:max-content}
+.lang-seg button{height:30px;min-width:42px;padding:0 12px;border:0;border-radius:999px;background:transparent;color:var(--muted);font:700 12px/1 inherit;letter-spacing:.06em;cursor:pointer;transition:.2s}
+.lang-seg button:hover{color:var(--text)}
+.lang-seg button.on{background:var(--vert);color:var(--ivoire)}
+.login-card>.lang-seg{align-self:flex-end;margin:-18px -14px -6px 0}
+.fld-lbl{margin:16px 0 8px;font-size:13px;font-weight:600}
+.dock-btn.lang-btn{font:700 13px/1 inherit;letter-spacing:.05em}
 [data-theme=dark] .seg button.on{background:var(--ivoire);color:var(--vert)}
 .date-lbl{display:inline-flex;align-items:center;gap:8px;justify-self:center;color:var(--muted);font-weight:600;font-size:14px}
 .tb-actions{display:flex;gap:10px}

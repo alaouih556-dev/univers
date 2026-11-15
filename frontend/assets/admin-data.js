@@ -21,7 +21,7 @@ const TYPE_LABEL = { catalog: 'Catalog order', custom: 'Custom-made', interior: 
 const STEPS = [['design', 'Design validated'], ['materials', 'Materials ordered'], ['fabrication', 'Fabrication'], ['finishing', 'Finishing'], ['delivery', 'Delivery & installation']];
 const CLIENT_TYPES = { individual: 'Individual', company: 'Company', hotel: 'Hotel', office: 'Office', riad: 'Riad', clinic: 'Clinic', school: 'School', restaurant: 'Restaurant' };
 const QUOTE_STATUS = { draft: 'Draft', sent: 'Sent', accepted: 'Accepted', refused: 'Refused' };
-const fmtMAD = n => new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(Math.round(n || 0)) + ' MAD';
+const fmtMAD = n => new Intl.NumberFormat(window.LuxorI18n?.numLocale || 'en-US', { maximumFractionDigits: 0 }).format(Math.round(n || 0)) + ' MAD';
 
 /* ---------------- database access ---------------- */
 let request = null;                       // set by init(): (path, {method, body, headers}) => json
@@ -114,7 +114,7 @@ function metrics() {
     const pays = db.payments.filter(x => inMonth(x.date, Y, m));
     const value = (m <= M ? hist(Y, m) : 0) + pays.reduce((s, x) => s + x.amount, 0);
     const prev = hist(Y - 1, m) + db.payments.filter(x => inMonth(x.date, Y - 1, m)).reduce((s, x) => s + x.amount, 0);
-    return { month: m, label: new Date(Y, m, 1).toLocaleString('en-US', { month: 'short' }), value, prev, projects: new Set(pays.map(x => x.projectId)).size, kind: m < M ? 'past' : m === M ? 'current' : 'future' };
+    return { month: m, label: new Date(Y, m, 1).toLocaleString(window.LuxorI18n?.locale || 'en-US', { month: 'short' }), value, prev, projects: new Set(pays.map(x => x.projectId)).size, kind: m < M ? 'past' : m === M ? 'current' : 'future' };
   });
   const pastVals = revenue.filter(r => r.kind !== 'future').map(r => r.value);
   return {
@@ -127,7 +127,7 @@ function metrics() {
     avgProgress: inProgress.length ? Math.round(inProgress.reduce((s, p) => s + progressOf(p), 0) / inProgress.length) : 0,
     startedThisMonth, startedChange: startedThisMonth - startedLastMonth,
     startedSeries: months6.map(([y, m]) => P.filter(p => inMonth(p.startDate, y, m)).length),
-    monthLabels: months6.map(([y, m]) => new Date(y, m, 1).toLocaleString('en-US', { month: 'short' })),
+    monthLabels: months6.map(([y, m]) => new Date(y, m, 1).toLocaleString(window.LuxorI18n?.locale || 'en-US', { month: 'short' })),
     total: P.length, finished: finished.length, deliveredThisMonth, overdue: overdue.length, byStatus,
     revenue, revenueAvg: pastVals.reduce((s, v) => s + v, 0) / (pastVals.length || 1),
     receivedThisMonth: db.payments.filter(x => inMonth(x.date, Y, M)).reduce((s, x) => s + x.amount, 0),

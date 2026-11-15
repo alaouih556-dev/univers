@@ -83,6 +83,14 @@ body.hdr-compact .logo-txt{max-height:0;opacity:0;margin-top:0}
 .hdr-icons svg{width:20px;height:20px;stroke-width:1.6}
 .fav-count{position:absolute;top:-5px;right:-9px;font-style:normal;font-size:9px;font-weight:700;background:var(--ink);color:#fff;border-radius:50%;min-width:15px;height:15px;display:grid;place-items:center;line-height:1}
 .fav-count:empty{display:none}
+.lang-sw{display:flex;align-items:center;gap:2px;background:none;border:0;padding:0 2px;cursor:pointer;font:700 12px/1 inherit;letter-spacing:.06em;color:var(--ink)}
+.lang-sw span{padding:3px 4px;opacity:.5;transition:opacity .2s}
+.lang-sw span.on{opacity:1;border-bottom:1.5px solid currentColor}
+.lang-sw:hover span{opacity:.85}.lang-sw:hover span.on{opacity:1}
+.header .lang-sw{color:var(--or)}
+#app.lang-fade main,#app.lang-fade footer{animation:langFade .45s ease}
+@keyframes langFade{from{opacity:.35}to{opacity:1}}
+@media (prefers-reduced-motion:reduce){#app.lang-fade main,#app.lang-fade footer{animation:none}}
 .hdr-links{display:flex;gap:42px}
 .hdr-link{background:none;border:0;padding:3px 2px;font-size:15px;font-weight:700;text-transform:uppercase;color:var(--ink);position:relative}
 .hdr-link::after{content:'';position:absolute;left:2px;right:2px;bottom:0;height:2px;background:var(--ink);transform:scaleX(0);transition:transform .3s var(--ease)}

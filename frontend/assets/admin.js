@@ -6,11 +6,11 @@
 'use strict';
 const app = document.getElementById('admin');
 const A = '../assets/';
-const S = window.LuxorStore, CH = window.LuxorCharts;
+const S = window.LuxorStore, CH = window.LuxorCharts, L = window.LuxorI18n;
 const esc = t => String(t ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const mad = S.fmtMAD;
-const money = n => new Intl.NumberFormat('en-US').format(Math.round(n || 0)) + ' MAD';
-const fdate = s => s ? S.parse(s).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
+const money = n => new Intl.NumberFormat(L.numLocale).format(Math.round(n || 0)) + ' MAD';
+const fdate = s => s ? S.parse(s).toLocaleDateString(L.locale, { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
 const img = p => { const n = p._preview || p.image || (p.gallery && p.gallery[0]) || p.fallback || 'hero-ivoire.webp'; return /^(https?:|data:)/.test(n) ? n : A + n; };
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -185,6 +185,18 @@ function setTheme(t) { document.documentElement.dataset.theme = t; localStorage.
 const displayName = () => localStorage.getItem(NAME_KEY) || 'Luxor Création';
 const initials = n => n.split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0].toUpperCase()).join('') || 'LC';
 
+/* Language: admin-i18n.js translates the UI; here we only place the switches and refresh dates/amounts */
+const langSeg = () => `<div class="lang-seg" role="radiogroup" aria-label="Language" translate="no">${[['en', 'EN'], ['fr', 'FR']].map(([k, l]) => `<button type="button" role="radio" data-lang-set="${k}" aria-checked="${L.lang === k}" class="${L.lang === k ? 'on' : ''}">${l}</button>`).join('')}</div>`;
+const langLabel = () => L.lang === 'fr' ? 'Switch to English' : 'Passer en français';
+document.addEventListener('click', e => { const b = e.target.closest('[data-lang-set]'); if (b) L.set(b.dataset.langSet); else if (e.target.closest('#langbtn')) L.toggle(); });
+addEventListener('luxor-lang', () => {
+  $$('[data-lang-set]').forEach(b => { const on = b.dataset.langSet === L.lang; b.classList.toggle('on', on); b.setAttribute('aria-checked', on); });
+  const lb = $('#langbtn'); if (lb) { lb.textContent = L.lang === 'fr' ? 'EN' : 'FR'; lb.setAttribute('aria-label', langLabel()); lb.title = langLabel(); }
+  if (!document.body.classList.contains('is-app')) return;
+  updateBadges();
+  if (ui.route === 'catalog') { if (state.catalogLoaded && $('#rows')) renderRows(); }
+  else if (ui.route !== 'settings') renderRoute(true);
+});
 const logoMark = `<img class="brand-mark" src="${A}luxor-mark-gold.webp" alt="" width="36" height="36">`;
 
 /* ---------------- login (protected route) ---------------- */
@@ -192,6 +204,7 @@ function showLogin(msg = '') {
   document.body.className = 'is-login';
   app.innerHTML = `<main class="login">
     <form class="login-card" id="loginform" novalidate>
+      ${langSeg()}
       <img class="login-logo" src="${A}luxor-logo-gold.webp" alt="Luxor Création">
       <h1>Admin panel</h1>
       <p class="login-sub">Sign in to manage projects, clients and the catalog.</p>
@@ -243,6 +256,7 @@ async function startApp() {
       <a class="dock-btn" href="#/settings" aria-label="Settings">${ico('gear')}</a>
       <button class="dock-btn" id="dockhelp" aria-label="Help">${ico('help')}</button>
       <span class="dock-sep"></span>
+      <button class="dock-btn lang-btn" id="langbtn" translate="no" aria-label="${langLabel()}" title="${langLabel()}">${L.lang === 'fr' ? 'EN' : 'FR'}</button>
       <button class="dock-btn" id="themebtn" aria-label="Switch to dark mode">${ico(theme() === 'dark' ? 'sun' : 'moon')}</button>
     </div>
     <div class="tip" id="tip" hidden></div>
@@ -301,7 +315,7 @@ const badge = (v, { unit = '', pct = false, invert = false } = {}) => {
   const txt = flat ? '0' : (pct ? Math.abs(v).toFixed(1) + '%' : Math.abs(Math.round(v)) + unit);
   return `<span class="chg ${flat ? 'flat' : good ? 'pos' : 'neg'}">${flat ? '→' : up ? '↑' : '↓'} ${txt}</span>`;
 };
-const monthLabel = m => `${m.today.toLocaleString('en-US', { month: 'long' })} ${m.Y}, month to date`;
+const monthLabel = m => `${m.today.toLocaleString(L.locale, { month: 'long' })} ${m.Y}, month to date`;
 function titleRow(title, chip = '') { return `<div class="title-row"><h1>${title}</h1>${chip}</div>`; }
 function toolbar({ report = true } = {}) {
   const m = S.metrics();
@@ -416,7 +430,7 @@ function upcomingDeliveries() {
   const t = S.today();
   const list = S.get().projects.filter(p => p.status !== 'finished').sort((a, b) => a.deliveryDate.localeCompare(b.deliveryDate)).slice(0, 5);
   return `<p class="lbl">Upcoming deliveries ${infoTip('Next delivery dates of projects not finished yet.')}</p>
-    <ul class="up-list">${list.map(p => { const d = Math.round((S.parse(p.deliveryDate) - t) / 864e5); return `<li><a href="#/projects/${p.id}"><span class="up-day ${d < 0 ? 'late' : d <= 21 ? 'soon' : ''}"><b>${S.parse(p.deliveryDate).getDate()}</b>${S.parse(p.deliveryDate).toLocaleString('en-US', { month: 'short' })}</span><span class="up-t"><b>${esc(p.title)}</b><small class="muted">${esc(S.client(p.clientId)?.name)} · ${d < 0 ? `${-d} days late` : d === 0 ? 'today' : `in ${d} days`}</small></span>${pill(p.status)}</a></li>`; }).join('') || '<li class="muted">Nothing scheduled.</li>'}</ul>`;
+    <ul class="up-list">${list.map(p => { const d = Math.round((S.parse(p.deliveryDate) - t) / 864e5); return `<li><a href="#/projects/${p.id}"><span class="up-day ${d < 0 ? 'late' : d <= 21 ? 'soon' : ''}"><b>${S.parse(p.deliveryDate).getDate()}</b>${S.parse(p.deliveryDate).toLocaleString(L.locale, { month: 'short' })}</span><span class="up-t"><b>${esc(p.title)}</b><small class="muted">${esc(S.client(p.clientId)?.name)} · ${d < 0 ? `${-d} days late` : d === 0 ? 'today' : `in ${d} days`}</small></span>${pill(p.status)}</a></li>`; }).join('') || '<li class="muted">Nothing scheduled.</li>'}</ul>`;
 }
 function drawRevenue() {
   const el = $('#revchart'); if (!el) return;
@@ -730,7 +744,8 @@ function viewSettings(v) {
         <label class="fld">Display name<input name="name" maxlength="60" value="${esc(displayName())}"></label>
         <p class="muted small">Signed in as <b>${esc(state.email)}</b></p><button class="btn primary" type="submit">Save</button></form>
       <div class="card white"><h2>Appearance</h2><p class="muted small">Also available from the floating toolbar.</p>
-        <div class="seg" role="radiogroup" aria-label="Theme"><button role="radio" data-theme-set="light" aria-checked="${theme() === 'light'}" class="${theme() === 'light' ? 'on' : ''}">${ico('sun')}Light</button><button role="radio" data-theme-set="dark" aria-checked="${theme() === 'dark'}" class="${theme() === 'dark' ? 'on' : ''}">${ico('moon')}Dark</button></div></div>
+        <div class="seg" role="radiogroup" aria-label="Theme"><button role="radio" data-theme-set="light" aria-checked="${theme() === 'light'}" class="${theme() === 'light' ? 'on' : ''}">${ico('sun')}Light</button><button role="radio" data-theme-set="dark" aria-checked="${theme() === 'dark'}" class="${theme() === 'dark' ? 'on' : ''}">${ico('moon')}Dark</button></div>
+        <p class="fld-lbl">Language</p>${langSeg()}</div>
       <form class="card white" id="pwform"><h2>Change password</h2><p class="muted small">At least 10 characters.</p>
         <label class="fld">New password<input name="pw" type="password" minlength="10" autocomplete="new-password" required></label>
         <label class="fld">Confirm<input name="pw2" type="password" minlength="10" autocomplete="new-password" required></label>
