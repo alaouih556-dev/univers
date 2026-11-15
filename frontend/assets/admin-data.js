@@ -20,6 +20,7 @@ const CLIENT_TYPES = { individual: 'Individual', company: 'Company', hotel: 'Hot
 const QUOTE_STATUS = { draft: 'Draft', sent: 'Sent', accepted: 'Accepted', refused: 'Refused' };
 const ORDER_STATUS = { draft: 'Draft', confirmed: 'Confirmed', delivered: 'Delivered', cancelled: 'Cancelled' };
 const PAY_METHODS = ['Bank transfer', 'Cheque', 'Card', 'Cash'];
+const DELIVERY_STATUS = { draft: 'Draft', delivered: 'Delivered & signed' };
 const fmtMAD = n => new Intl.NumberFormat(window.LuxorI18n?.numLocale || 'en-US', { maximumFractionDigits: 0 }).format(Math.round(n || 0)) + ' MAD';
 
 /* ---------------- API access ---------------- */
@@ -27,9 +28,9 @@ let request = null;                       // set by init(): (path, {method, body
 const enc = encodeURIComponent;
 const send = (method, path, body) => request('/admin' + path, { method, body });
 
-let db = { clients: [], projects: [], payments: [], messages: [], quotes: [], orders: [], revenue: {}, company: {} };
+let db = { clients: [], projects: [], payments: [], messages: [], quotes: [], orders: [], deliveries: [], revenue: {}, company: {} };
 let loaded = false;
-async function refresh() { db = await request('/admin/data'); db.orders ||= []; loaded = true; }
+async function refresh() { db = await request('/admin/data'); db.orders ||= []; db.deliveries ||= []; loaded = true; }
 const subs = new Set();
 const notify = () => subs.forEach(fn => { try { fn(db); } catch (e) { console.error(e); } });
 async function after(fn) { const out = await fn(); await refresh(); notify(); return out; }
@@ -38,6 +39,14 @@ const project = id => db.projects.find(p => p.id === id);
 const client = id => db.clients.find(c => c.id === id);
 const quote = id => db.quotes.find(q => q.id === id);
 const order = id => db.orders.find(o => o.id === id);
+const delivery = id => db.deliveries.find(d => d.id === id);
+/* what is left to deliver on each line of a purchase order (other delivery notes than exceptId) */
+const lineKey = i => [i.label, i.color, i.dimensions].map(x => String(x || '').trim().toLowerCase()).join('|');
+function remainingFor(o, exceptId) {
+  const done = new Map();
+  for (const d of db.deliveries) if (d.orderId === o.id && d.id !== exceptId) for (const i of d.items) done.set(lineKey(i), (done.get(lineKey(i)) || 0) + i.qty);
+  return o.items.map(i => { const k = lineKey(i), used = Math.min(i.qty, done.get(k) || 0); done.set(k, (done.get(k) || 0) - used); return { ...i, delivered: used, left: Math.max(0, Math.round((i.qty - used) * 100) / 100) }; });
+}
 
 /* ---------------- selectors ---------------- */
 const paidFor = (p, until) => db.payments.filter(x => x.projectId === p.id && (!until || parse(x.date) <= until)).reduce((s, x) => s + x.amount, 0);
@@ -128,7 +137,7 @@ const addClient = data => after(() => send('POST', '/clients', data));
 const updateClient = (id, data) => after(() => send('PATCH', `/clients/${enc(id)}`, data));
 function clientUsage(id) {
   const projects = db.projects.filter(p => p.clientId === id);
-  return { projects, quotes: db.quotes.filter(q => q.clientId === id), orders: db.orders.filter(o => o.clientId === id), payments: db.payments.filter(x => projects.some(p => p.id === x.projectId)) };
+  return { projects, quotes: db.quotes.filter(q => q.clientId === id), orders: db.orders.filter(o => o.clientId === id), deliveries: db.deliveries.filter(d => d.clientId === id), payments: db.payments.filter(x => projects.some(p => p.id === x.projectId)) };
 }
 const removeClient = id => after(() => send('DELETE', `/clients/${enc(id)}`));   // projects, payments and quotes are deleted with it
 
@@ -151,6 +160,11 @@ const saveOrder = data => after(async () => (await send(data.id ? 'PUT' : 'POST'
 const setOrderStatus = (id, status) => after(() => send('PATCH', `/orders/${enc(id)}/status`, { status }));
 const removeOrder = id => after(() => send('DELETE', `/orders/${enc(id)}`));
 
+/* ---------------- delivery notes (bons de livraison) ---------------- */
+const saveDelivery = data => after(async () => (await send(data.id ? 'PUT' : 'POST', data.id ? `/deliveries/${enc(data.id)}` : '/deliveries', data)).id);
+const setDeliveryStatus = (id, status) => after(() => send('PATCH', `/deliveries/${enc(id)}/status`, { status }));
+const removeDelivery = id => after(() => send('DELETE', `/deliveries/${enc(id)}`));
+
 /* ---------------- company details (printed on quotes) ---------------- */
 const COMPANY_FIELDS = ['name', 'tagline', 'address', 'city', 'phone', 'email', 'website', 'ice', 'rc', 'if_number', 'patente', 'bank'];
 const saveCompany = data => after(() => send('PUT', '/company', data));
@@ -160,17 +174,17 @@ const sampleCounts = () => ({ clients: db.clients.filter(c => c.sample).length, 
 const removeSampleData = () => after(() => send('DELETE', '/sample-data'));
 
 window.LuxorStore = {
-  STATUSES, STATUS_LABEL, TYPE_LABEL, STEPS, CLIENT_TYPES, QUOTE_STATUS, ORDER_STATUS, PAY_METHODS,
+  STATUSES, STATUS_LABEL, TYPE_LABEL, STEPS, CLIENT_TYPES, QUOTE_STATUS, ORDER_STATUS, PAY_METHODS, DELIVERY_STATUS,
   async init(req) { request = req; await refresh(); },
   reload: () => after(() => null),
   loaded: () => loaded,
   get: () => db, subscribe: fn => (subs.add(fn), () => subs.delete(fn)),
-  project, client, quote, order, metrics, notifications,
+  project, client, quote, order, delivery, remainingFor, metrics, notifications,
   paidFor, depositFor, dueFor, payStatus, progressOf,
   updateStatus, toggleStep, addPayment, addNote, markRead,
   addClient, updateClient, removeClient, clientUsage,
   quoteTotals, quoteExpiry, saveQuote, setQuoteStatus, removeQuote, convertQuote,
-  saveOrder, setOrderStatus, removeOrder,
+  saveOrder, setOrderStatus, removeOrder, saveDelivery, setDeliveryStatus, removeDelivery,
   sampleCounts, removeSampleData, saveCompany, COMPANY_FIELDS,
   fmtMAD, parse, iso, today
 };

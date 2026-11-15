@@ -227,7 +227,7 @@ function renderRoute(fromStore = false) {
   ui.route = route; ui.id = id; ui.key = key;
   $$('[data-nav]').forEach(a => { const on = a.dataset.nav === route; a.classList.toggle('active', on); if (on) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); });
   const v = $('#view'), y = scrollY;
-  const views = { dashboard: viewDashboard, projects: id ? () => viewProject(id) : viewProjects, clients: id === 'quote' && sub ? () => viewQuote(sub) : id === 'order' && sub ? () => viewOrder(sub) : viewClients, catalog: viewCatalog, payments: viewPayments, messages: viewMessages, settings: viewSettings };
+  const views = { dashboard: viewDashboard, projects: id ? () => viewProject(id) : viewProjects, clients: id === 'quote' && sub ? () => viewQuote(sub) : id === 'order' && sub ? () => viewOrder(sub) : id === 'delivery' && sub ? () => viewDelivery(sub) : viewClients, catalog: viewCatalog, payments: viewPayments, messages: viewMessages, settings: viewSettings };
   views[route](v);
   document.title = `${NAV.find(([k]) => k === route)[1]} — Univers admin`;
   if (changed && !fromStore) { scrollTo(0, 0); v.focus({ preventScroll: true }); $('.nav-pill .active')?.scrollIntoView({ inline: 'center', block: 'nearest' }); }
@@ -451,7 +451,7 @@ const QS = S.QUOTE_STATUS;
 const qpill = st => `<span class="status q-${st}">${QS[st]}</span>`;
 function viewClients(v) {
   const db = S.get(), q = (ui.cq || '').trim().toLowerCase();
-  const rows = db.clients.map(c => { const ps = db.projects.filter(p => p.clientId === c.id); return { c, ps, qs: db.quotes.filter(x => x.clientId === c.id), os: db.orders.filter(x => x.clientId === c.id), billed: ps.reduce((s, p) => s + p.totalPrice, 0), due: ps.reduce((s, p) => s + S.dueFor(p), 0), done: ps.some(p => p.status === 'finished') }; })
+  const rows = db.clients.map(c => { const ps = db.projects.filter(p => p.clientId === c.id); return { c, ps, qs: db.quotes.filter(x => x.clientId === c.id), os: db.orders.filter(x => x.clientId === c.id), ds: db.deliveries.filter(x => x.clientId === c.id), billed: ps.reduce((s, p) => s + p.totalPrice, 0), due: ps.reduce((s, p) => s + S.dueFor(p), 0), done: ps.some(p => p.status === 'finished') }; })
     .filter(r => !q || [r.c.name, r.c.city, r.c.email, r.c.phone, S.CLIENT_TYPES[r.c.type]].join(' ').toLowerCase().includes(q))
     .sort((a, b) => b.billed - a.billed || a.c.name.localeCompare(b.c.name));
   const qf = ui.qf || '';
@@ -460,13 +460,13 @@ function viewClients(v) {
   v.innerHTML = `${titleRow('Clients', `<div class="row-gap"><span class="chip"><i class="live"></i>${db.clients.length} clients · ${S.metrics().openQuotes} open quotes</span><button class="btn primary" id="addclient">${ico('plus')}New client</button></div>`)}
     <div class="toolbar tb-clients"><label class="search-pill">${ico('search')}<input type="search" id="csearch" placeholder="Search a client, city, email…" value="${esc(ui.cq || '')}" aria-label="Search clients"></label>
       <button class="btn outline" id="newquote">${ico('file')}New quote</button></div>
-    ${rows.length ? `<section class="client-grid">${rows.map(({ c, ps, qs, os, billed, due, done }, i) => `<article class="card ${['white', 'sable', 'white', 'pastel'][i % 4]} client-card" data-client="${c.id}">
+    ${rows.length ? `<section class="client-grid">${rows.map(({ c, ps, qs, os, ds, billed, due, done }, i) => `<article class="card ${['white', 'sable', 'white', 'pastel'][i % 4]} client-card" data-client="${c.id}">
       <div class="cc-top"><span class="cc-av">${esc(initials(c.name))}</span><div><b>${esc(c.name)}</b><small class="muted">${S.CLIENT_TYPES[c.type]}${c.city ? ' · ' + esc(c.city) : ''}</small></div>
         <div class="cc-act"><button class="icon-btn" data-editclient title="Edit client" aria-label="Edit ${esc(c.name)}">${ico('edit')}</button><button class="icon-btn danger" data-delclient title="Delete client" aria-label="Delete ${esc(c.name)}">${ico('trash')}</button></div></div>
       <ul class="contact compact">${c.phone ? `<li>${ico('phone')}<a href="tel:${esc(c.phone.replace(/\s/g, ''))}">${esc(c.phone)}</a></li>` : ''}${c.email ? `<li>${ico('mail')}<a href="mailto:${esc(c.email)}">${esc(c.email)}</a></li>` : ''}${c.address ? `<li>${ico('pin')}<span>${esc(c.address)}</span></li>` : ''}${!c.phone && !c.email && !c.address ? '<li class="muted">No contact details yet.</li>' : ''}</ul>
       <hr class="dash"><div class="cc-stats"><span><small>Projects</small><b>${ps.length}</b></span><span><small>Billed</small><b>${money(billed)}</b></span><span><small>Due</small><b class="${due ? 'gold-amount' : ''}">${money(due)}</b></span></div>
-      ${ps.length || qs.length || os.length ? `<div class="cc-projects">${ps.map(p => `<a href="#/projects/${p.id}">${esc(p.title)} ${pill(p.status)}</a>`).join('')}${qs.map(x => `<a href="#/clients/quote/${x.id}">${ico('file')}<span class="cc-q">${esc(x.number)} · ${money(S.quoteTotals(x).total)}</span> ${qpill(x.status)}</a>`).join('')}${os.map(x => `<a href="#/clients/order/${x.id}">${ico('file')}<span class="cc-q">${esc(x.number)} · ${money(S.quoteTotals(x).total)}</span> ${opill(x.status)}</a>`).join('')}</div>` : ''}
-      <div class="cc-btns"><button class="btn pill-sm cc-quote" data-quoteclient>${ico('plus')}New quote</button><button class="btn pill-sm cc-quote" data-orderclient>${ico('plus')}Purchase order</button></div>
+      ${ps.length || qs.length || os.length || ds.length ? `<div class="cc-projects">${ps.map(p => `<a href="#/projects/${p.id}">${esc(p.title)} ${pill(p.status)}</a>`).join('')}${qs.map(x => `<a href="#/clients/quote/${x.id}">${ico('file')}<span class="cc-q">${esc(x.number)} · ${money(S.quoteTotals(x).total)}</span> ${qpill(x.status)}</a>`).join('')}${os.map(x => `<a href="#/clients/order/${x.id}">${ico('file')}<span class="cc-q">${esc(x.number)} · ${money(S.quoteTotals(x).total)}</span> ${opill(x.status)}</a>`).join('')}${ds.map(x => `<a href="#/clients/delivery/${x.id}">${ico('file')}<span class="cc-q">${esc(x.number)} · ${fdate(x.date)}</span> ${dpill(x.status)}</a>`).join('')}</div>` : ''}
+      <div class="cc-btns"><button class="btn pill-sm cc-quote" data-quoteclient>${ico('plus')}New quote</button><button class="btn pill-sm cc-quote" data-orderclient>${ico('plus')}Purchase order</button><button class="btn pill-sm cc-quote" data-deliveryclient>${ico('plus')}Delivery note</button></div>
       ${done ? '<span class="chg pos cc-done">Completed</span>' : ''}</article>`).join('')}</section>`
       : `<div class="card white empty-state"><p>${q ? 'No client matches your search.' : 'No clients yet.'}</p>${q ? '' : `<button class="btn primary" id="addclient2">${ico('plus')}Add your first client</button>`}</div>`}
     <section class="card white tbl-card quotes-card"><div class="card-head"><h2>Quotes <span class="muted">(devis)</span></h2>
@@ -482,7 +482,12 @@ function viewClients(v) {
       ${orders.map(x => `<tr><td data-l="Number"><b class="p-title">${esc(x.number)}</b>${x.quoteId && S.quote(x.quoteId) ? `<small class="muted"> · ${esc(S.quote(x.quoteId).number)}</small>` : ''}</td><td data-l="Client">${esc(S.client(x.clientId)?.name)}</td><td data-l="Subject">${esc(x.title)}</td>
         <td data-l="Date">${fdate(x.date)}</td><td data-l="Delivery">${x.deliveryDate ? fdate(x.deliveryDate) : '—'}</td><td data-l="Total (TTC)" class="num"><b>${money(S.quoteTotals(x).total)}</b></td><td data-l="Status">${opill(x.status)}</td>
         <td class="act"><a class="btn pill-sm" href="#/clients/order/${x.id}">Open</a></td></tr>`).join('')}</tbody></table></div>`
-      : `<p class="empty">${of ? 'No purchase order with this status.' : 'No purchase orders yet — use “Purchase order” on a client card or on a quote.'}</p>`}</section>`;
+      : `<p class="empty">${of ? 'No purchase order with this status.' : 'No purchase orders yet — use “Purchase order” on a client card or on a quote.'}</p>`}</section>
+    <section class="card white tbl-card quotes-card"><div class="card-head"><h2>Delivery notes <span class="muted">(bons de livraison)</span></h2></div>
+      ${db.deliveries.length ? `<div class="tbl-wrap"><table class="ptbl"><thead><tr><th>Number</th><th>Client</th><th>Purchase order</th><th>Date</th><th class="num">Items</th><th>Status</th><th></th></tr></thead><tbody>
+      ${db.deliveries.map(x => `<tr><td data-l="Number"><b class="p-title">${esc(x.number)}</b></td><td data-l="Client">${esc(S.client(x.clientId)?.name)}</td><td data-l="Purchase order">${x.orderId && S.order(x.orderId) ? `<a href="#/clients/order/${x.orderId}">${esc(S.order(x.orderId).number)}</a>` : '—'}</td>
+        <td data-l="Date">${fdate(x.date)}</td><td data-l="Items" class="num">${x.items.reduce((s, i) => s + i.qty, 0)}</td><td data-l="Status">${dpill(x.status)}</td><td class="act"><a class="btn pill-sm" href="#/clients/delivery/${x.id}">Open</a></td></tr>`).join('')}</tbody></table></div>`
+      : `<p class="empty">No delivery notes yet — open a confirmed purchase order and use “Delivery note”.</p>`}</section>`;
   const add = () => openClientForm(null);
   $('#addclient', v).onclick = add; const a2 = $('#addclient2', v); if (a2) a2.onclick = add;
   $('#newquote', v).onclick = () => db.clients.length ? openQuoteEditor({ clientId: rows[0]?.c.id || db.clients[0].id }) : toast('Add a client first.', 'err');
@@ -495,6 +500,7 @@ function viewClients(v) {
     $('[data-delclient]', card).onclick = () => deleteClient(c);
     $('[data-quoteclient]', card).onclick = () => openQuoteEditor({ clientId: c.id });
     $('[data-orderclient]', card).onclick = () => openQuoteEditor({ clientId: c.id }, 'order');
+    $('[data-deliveryclient]', card).onclick = () => { const os = deliverableOrders(c.id); if (!os.length) return toast('This client has no confirmed purchase order left to deliver.', 'err'); openDeliveryEditor({ clientId: c.id, orderId: os[0].id }); };
   });
 }
 
@@ -523,7 +529,7 @@ function openClientForm(c) {
 }
 function deleteClient(c) {
   const u = S.clientUsage(c.id), paid = u.payments.reduce((s, x) => s + x.amount, 0);
-  const linked = [u.projects.length && `${u.projects.length} project${u.projects.length > 1 ? 's' : ''}`, u.payments.length && `${u.payments.length} payment${u.payments.length > 1 ? 's' : ''} (${money(paid)})`, u.quotes.length && `${u.quotes.length} quote${u.quotes.length > 1 ? 's' : ''}`, u.orders.length && `${u.orders.length} purchase order${u.orders.length > 1 ? 's' : ''}`].filter(Boolean);
+  const linked = [u.projects.length && `${u.projects.length} project${u.projects.length > 1 ? 's' : ''}`, u.payments.length && `${u.payments.length} payment${u.payments.length > 1 ? 's' : ''} (${money(paid)})`, u.quotes.length && `${u.quotes.length} quote${u.quotes.length > 1 ? 's' : ''}`, u.orders.length && `${u.orders.length} purchase order${u.orders.length > 1 ? 's' : ''}`, u.deliveries.length && `${u.deliveries.length} delivery note${u.deliveries.length > 1 ? 's' : ''}`].filter(Boolean);
   confirmBox({ title: `Delete “${c.name}”?`, ok: 'Delete client',
     text: linked.length ? `This will also permanently delete <b>${linked.join(', ')}</b> linked to this client. This cannot be undone.` : 'The client will be permanently deleted.',
     run: () => S.removeClient(c.id), done: () => toast(`Client “${c.name}” deleted.`) });
@@ -570,7 +576,7 @@ function openQuoteEditor(q, kind = 'quote') {
       <dl class="q-totals" id="qtotals"></dl>
     </div></div>
     <p class="form-err" id="qerr" role="alert"></p>
-    <div class="m-foot"><button type="button" class="btn outline" data-close>Cancel</button><button type="submit" class="btn primary">${isNew ? 'Create quote' : 'Save quote'}</button></div></form>`);
+    <div class="m-foot"><button type="button" class="btn outline" data-close>Cancel</button><button type="submit" class="btn primary">${isOrder ? (isNew ? 'Create purchase order' : 'Save purchase order') : (isNew ? 'Create quote' : 'Save quote')}</button></div></form>`);
   m.querySelector('.modal-card').classList.add('wide');
   const f = $('#qform', m), lines = $('#qlines', m);
   /* one line = photo + product/service + qty + price, then description and details (all editable) */
@@ -716,10 +722,13 @@ function viewOrder(id) {
       <div class="row-gap">
         ${q ? `<a class="btn outline" href="#/clients/quote/${q.id}">${ico('file')}Quote ${esc(q.number)}</a>` : ''}
         ${locked ? '' : `<button class="btn outline" id="oedit">${ico('edit')}Edit</button>`}
+        ${o.status === 'cancelled' ? '' : `<button class="btn outline" id="odeliver">${ico('file')}Delivery note</button>`}
         <button class="btn outline" id="oprint">${ico('download')}Print / PDF</button>
         <button class="icon-btn danger" id="odel" title="Delete purchase order" aria-label="Delete purchase order">${ico('trash')}</button>
       </div>
     </div>
+    ${(() => { const ds = S.get().deliveries.filter(d => d.orderId === o.id); if (!ds.length) return ''; const rem = S.remainingFor(o), left = rem.reduce((s, i) => s + i.left, 0), all = rem.reduce((s, i) => s + i.qty, 0);
+      return `<section class="card white dl-progress"><div class="card-head"><h2>Delivery notes</h2><span class="muted small">${all - left} / ${all} delivered</span></div><div class="cc-projects">${ds.map(d => `<a href="#/clients/delivery/${d.id}">${ico('file')}<span class="cc-q">${esc(d.number)} · ${fdate(d.date)} · ${d.items.reduce((s, i) => s + i.qty, 0)} items</span> ${dpill(d.status)}</a>`).join('')}</div></section>`; })()}
     ${!co.ice && !co.address ? `<p class="hint-bar">${ico('info')}<span>Add your company address, ICE and RC in <a href="#/settings">Settings</a> so they appear on the quote.</span></p>` : ''}
     <article class="quote-doc order-doc" lang="fr">
       <header class="qd-head">
@@ -751,6 +760,128 @@ function viewOrder(id) {
   $('#oprint', v).onclick = () => { document.body.classList.add('print-quote'); window.print(); };
   $('#odel', v).onclick = () => confirmBox({ title: `Delete purchase order ${o.number}?`, text: 'The purchase order will be permanently deleted.', ok: 'Delete purchase order', run: () => S.removeOrder(o.id), done: () => { toast(`Purchase order ${o.number} deleted.`); location.hash = '#/clients'; } });
   const ed = $('#oedit', v); if (ed) ed.onclick = () => openQuoteEditor(o, 'order');
+  const dv = $('#odeliver', v); if (dv) dv.onclick = () => {
+    if (o.status === 'draft') return toast('Confirm the purchase order before delivering it.', 'err');
+    if (!S.remainingFor(o).some(i => i.left > 0)) return toast('Everything on this purchase order has already been delivered.', 'err');
+    openDeliveryEditor({ clientId: o.clientId, orderId: o.id });
+  };
+}
+
+/* ---------------- delivery notes (bons de livraison) ---------------- */
+const DS = S.DELIVERY_STATUS;
+const dpill = st => `<span class="status d-${st}">${DS[st]}</span>`;
+/* confirmed orders with something left to deliver (plus the order of the note being edited) */
+const deliverableOrders = (clientId, keepId) => S.get().orders.filter(o => o.clientId === clientId && (o.id === keepId || (o.status === 'confirmed' && S.remainingFor(o).some(i => i.left > 0))));
+function openDeliveryEditor(d) {
+  const isNew = !d.id, db = S.get();
+  d = { date: S.iso(S.today()), deliveryAddress: '', carrier: '', notes: '', items: [], orderId: null, ...d };
+  const m = openModal(`<form id="dform" class="pform qform" novalidate>
+    <div class="m-head"><h2>${isNew ? 'New delivery note' : 'Edit delivery note ' + esc(d.number)}</h2><button type="button" class="icon-btn" data-close aria-label="Close">${ico('x')}</button></div>
+    <div class="m-body single"><div class="fields">
+      <label>Client *<select name="clientId">${db.clients.map(c => `<option value="${c.id}" ${d.clientId === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label>
+      <label>Purchase order *<select name="orderId"></select></label>
+      <label>Delivery date<input name="date" type="date" value="${esc(d.date)}"></label>
+      <label>Driver / carrier<input name="carrier" maxlength="120" value="${esc(d.carrier)}" placeholder="e.g. Our team, or the transport company"></label>
+      <label class="full">Delivery address<input name="deliveryAddress" maxlength="300" value="${esc(d.deliveryAddress)}" placeholder="Address where the order is delivered"></label>
+    </div>
+    <div class="q-lines"><div class="dl-head"><span></span><span>Item</span><span>Colour</span><span>Ordered</span><span>Delivered now</span><span></span></div>
+      <div id="dlines"></div>
+      <p class="muted small" id="dhint"></p></div>
+    <div class="fields"><label class="full">Remarks / client reservations<textarea name="notes" rows="3" maxlength="1200" placeholder="e.g. delivered and installed, one box damaged…">${esc(d.notes)}</textarea></label></div></div>
+    <p class="form-err" id="derr" role="alert"></p>
+    <div class="m-foot"><button type="button" class="btn outline" data-close>Cancel</button><button type="submit" class="btn primary">${isNew ? 'Create delivery note' : 'Save delivery note'}</button></div></form>`);
+  m.querySelector('.modal-card').classList.add('wide');
+  const f = $('#dform', m), lines = $('#dlines', m);
+  const thumb = src => src ? `<img src="${esc(assetSrc(src))}" alt="" onerror="this.style.visibility='hidden'">` : ico('img');
+  /* order lines: product fixed, only the quantity delivered changes (max = what is left). Extra lines: free. */
+  const row = (it, fromOrder) => `<div class="dl-line${fromOrder ? ' from-order' : ''}" data-image="${esc(it.image || '')}" data-desc="${esc(it.description || '')}" data-mat="${esc(it.material || '')}" data-dim="${esc(it.dimensions || '')}" data-ordered="${fromOrder ? it.qty : ''}">
+    <span class="ql-thumb">${thumb(it.image)}</span>
+    <input class="dl-label" maxlength="200" value="${esc(it.label || '')}" placeholder="Item" aria-label="Item" ${fromOrder ? 'readonly' : ''}>
+    <input class="dl-color" maxlength="200" value="${esc(it.color || '')}" placeholder="Colour" aria-label="Colour" ${fromOrder ? 'readonly' : ''}>
+    <span class="dl-info">${fromOrder ? `${it.qty}${it.delivered ? ` <small class="muted">· ${it.delivered} already delivered</small>` : ''}` : '<small class="muted">extra</small>'}</span>
+    <input class="dl-qty" type="number" min="0" step="1" ${fromOrder ? `max="${it.left}"` : ''} value="${esc(it.now ?? it.left ?? it.qty ?? 1)}" aria-label="Delivered now">
+    <button type="button" class="icon-btn ghost dl-del" aria-label="Remove line">${ico('x')}</button></div>`;
+  const fillOrders = () => {
+    const os = deliverableOrders(f.clientId.value, d.orderId);
+    f.orderId.innerHTML = os.map(o => `<option value="${o.id}" ${d.orderId === o.id ? 'selected' : ''}>${esc(o.number)} · ${esc(o.title)}</option>`).join('');
+  };
+  const fillLines = (keep) => {
+    const o = f.orderId.value ? S.order(f.orderId.value) : null;
+    if (!o) { lines.innerHTML = ''; $('#dhint', m).textContent = 'This client has no confirmed purchase order left to deliver.'; return; }
+    {
+      const rem = S.remainingFor(o, d.id);
+      const mine = keep ? d.items : [];
+      lines.innerHTML = rem.map(i => { const k = [i.label, i.color, i.dimensions].join('|'), cur = mine.find(x => [x.label, x.color, x.dimensions].join('|') === k); return row({ ...i, now: keep ? (cur ? cur.qty : 0) : i.left, left: i.left }, true); }).join('')
+        + mine.filter(x => !rem.some(i => [i.label, i.color, i.dimensions].join('|') === [x.label, x.color, x.dimensions].join('|'))).map(x => row({ ...x, now: x.qty }, false)).join('');
+      $('#dhint', m).textContent = rem.some(i => i.left > 0) ? 'Set 0 for items delivered later — they stay on the order.' : 'Everything on this purchase order has already been delivered.';
+      if (!keep && !f.deliveryAddress.value) f.deliveryAddress.value = o.deliveryAddress || '';
+    }
+  };
+  fillOrders();
+  if (isNew && !d.deliveryAddress) { const c = S.client(f.clientId.value); f.deliveryAddress.value = (f.orderId.value && S.order(f.orderId.value)?.deliveryAddress) || [c?.address, c?.city].filter(Boolean).join(', '); }
+  fillLines(!isNew);
+  f.clientId.onchange = () => { d.orderId = null; fillOrders(); const o = S.order(f.orderId.value), c = S.client(f.clientId.value); f.deliveryAddress.value = o?.deliveryAddress || [c?.address, c?.city].filter(Boolean).join(', '); fillLines(false); };
+  f.orderId.onchange = () => { const o = S.order(f.orderId.value); if (o?.deliveryAddress) f.deliveryAddress.value = o.deliveryAddress; fillLines(false); };
+  lines.addEventListener('click', e => { const b = e.target.closest('.dl-del'); if (!b) return; const r = b.closest('.dl-line'); if (r.classList.contains('from-order')) { $('.dl-qty', r).value = 0; } else r.remove(); });
+  f.onsubmit = async e => {
+    e.preventDefault(); const btn = f.querySelector('[type=submit]'), err = $('#derr', m);
+    const items = $$('.dl-line', lines).map(r => ({ label: $('.dl-label', r).value, color: $('.dl-color', r).value, qty: $('.dl-qty', r).value, qtyOrdered: r.dataset.ordered || null, image: r.dataset.image, description: r.dataset.desc, material: r.dataset.mat, dimensions: r.dataset.dim }));
+    btn.disabled = true; err.textContent = '';
+    try { const id = await S.saveDelivery({ id: d.id, clientId: f.clientId.value, orderId: f.orderId.value || null, date: f.date.value, carrier: f.carrier.value, deliveryAddress: f.deliveryAddress.value, notes: f.notes.value, items });
+      closeModal(); toast(isNew ? 'Delivery note created as a draft.' : 'Delivery note saved.'); location.hash = '#/clients/delivery/' + id; }
+    catch (x) { if (x.message !== 'auth') err.textContent = x.message; btn.disabled = false; }
+  };
+}
+function viewDelivery(id) {
+  const v = $('#view'), d = S.delivery(id);
+  if (!d) { v.innerHTML = `${titleRow('Delivery note not found')}<p><a class="btn outline" href="#/clients">${ico('back')}Back to clients</a></p>`; return; }
+  const c = S.client(d.clientId) || {}, co = S.get().company || {}, o = d.orderId ? S.order(d.orderId) : null, q = o?.quoteId ? S.quote(o.quoteId) : null;
+  const signed = d.status === 'delivered';
+  const rem = o ? S.remainingFor(o) : null;   // after all notes, including this one
+  const leftFor = i => { if (!rem) return null; const r = rem.find(x => [x.label, x.color, x.dimensions].join('|') === [i.label, i.color, i.dimensions].join('|')); return r ? r.left : null; };
+  const legal = [co.ice && `ICE : ${co.ice}`, co.rc && `RC : ${co.rc}`, co.if_number && `IF : ${co.if_number}`, co.patente && `Patente : ${co.patente}`].filter(Boolean).join(' · ');
+  const total = d.items.reduce((s, i) => s + i.qty, 0);
+  v.innerHTML = `<a class="back-link" href="${o ? '#/clients/order/' + o.id : '#/clients'}">${ico('back')} ${o ? esc(o.number) : 'Clients & quotes'}</a>
+    <div class="title-row detail-title"><div><p class="lbl">Delivery note · ${esc(c.name || '')}</p><h1>${esc(d.number)}</h1></div>${dpill(d.status)}</div>
+    <div class="quote-bar card white">
+      <div class="seg" role="radiogroup" aria-label="Delivery status">${Object.entries(DS).map(([k, l]) => `<button role="radio" aria-checked="${d.status === k}" class="${d.status === k ? 'on' : ''}" data-dstatus="${k}">${l}</button>`).join('')}</div>
+      <div class="row-gap">
+        ${o ? `<a class="btn outline" href="#/clients/order/${o.id}">${ico('file')}${esc(o.number)}</a>` : ''}
+        ${signed ? '' : `<button class="btn outline" id="dedit">${ico('edit')}Edit</button>`}
+        <button class="btn outline" id="dprint">${ico('download')}Print / PDF</button>
+        <button class="icon-btn danger" id="ddel" title="Delete delivery note" aria-label="Delete delivery note">${ico('trash')}</button>
+      </div>
+    </div>
+    <article class="quote-doc order-doc delivery-doc" lang="fr">
+      <header class="qd-head">
+        <div class="qd-co"><img src="${A}luxor-logo-gold.webp" alt="${esc(co.name || 'Luxor Création')}"><div><b>${esc(co.name || 'Luxor Création')}</b>${co.tagline ? `<span>${esc(co.tagline)}</span>` : ''}${co.address || co.city ? `<span>${esc([co.address, co.city].filter(Boolean).join(', '))}</span>` : ''}${co.phone ? `<span>Tél. ${esc(co.phone)}</span>` : ''}${co.email ? `<span>${esc(co.email)}</span>` : ''}${co.ice ? `<span>ICE : ${esc(co.ice)}</span>` : ''}</div></div>
+        <div class="qd-title"><h2>BON DE LIVRAISON</h2><dl><dt>N°</dt><dd>${esc(d.number)}</dd><dt>Date</dt><dd>${frDate(d.date)}</dd>${o ? `<dt>Réf. commande</dt><dd>${esc(o.number)}</dd>` : ''}${q ? `<dt>Réf. devis</dt><dd>${esc(q.number)}</dd>` : ''}</dl></div>
+      </header>
+      <section class="qd-parties">
+        <div class="qd-client"><p class="qd-lbl">Client</p><b>${esc(c.name || '')}</b>${c.address ? `<span>${esc(c.address)}</span>` : ''}${c.city ? `<span>${esc(c.city)}</span>` : ''}${c.phone ? `<span>Tél. ${esc(c.phone)}</span>` : ''}${o?.clientIce ? `<span>ICE : ${esc(o.clientIce)}</span>` : ''}</div>
+        <div class="qd-object"><p class="qd-lbl">Livraison</p>${o ? `<b>${esc(o.title)}</b>` : ''}<span>Adresse : ${d.deliveryAddress ? esc(d.deliveryAddress) : 'à préciser'}</span><span>Date : ${frDate(d.date)}</span>${d.carrier ? `<span>Livreur / transporteur : ${esc(d.carrier)}</span>` : ''}</div>
+      </section>
+      <div class="qd-table-wrap"><table class="qd-table"><thead><tr><th>Désignation</th><th>Coloris / finition</th>${o ? '<th class="num">Qté commandée</th>' : ''}<th class="num">Qté livrée</th>${o ? '<th class="num">Reste à livrer</th>' : ''}</tr></thead>
+        <tbody>${d.items.map(i => { const spec = [i.dimensions && `Dimensions : ${esc(i.dimensions)}`, i.material && `Matière : ${esc(i.material)}`].filter(Boolean).join(' · '), left = leftFor(i);
+          return `<tr><td><div class="qd-item">${i.image ? `<img class="qd-img" src="${esc(assetSrc(i.image))}" alt="${esc(i.label)}" onerror="this.remove()">` : ''}<div><b>${esc(i.label)}</b>${spec ? `<p class="qd-spec">${spec}</p>` : ''}</div></div></td>
+            <td class="qd-color">${i.color ? esc(i.color) : '—'}</td>${o ? `<td class="num">${i.qtyOrdered != null ? String(i.qtyOrdered).replace('.', ',') : '—'}</td>` : ''}<td class="num"><b>${String(i.qty).replace('.', ',')}</b></td>${o ? `<td class="num">${left == null ? '—' : String(left).replace('.', ',')}</td>` : ''}</tr>`; }).join('')}</tbody>
+        <tfoot><tr><td colspan="${o ? 3 : 2}">Nombre d’articles livrés</td><td class="num">${String(total).replace('.', ',')}</td>${o ? '<td></td>' : ''}</tr></tfoot></table></div>
+      ${o && rem.some(i => i.left > 0) ? `<p class="qd-partial">Livraison partielle : le reste sera livré ultérieurement.</p>` : ''}
+      <section class="qd-reserve"><p class="qd-lbl">Observations / réserves du client</p>${d.notes ? `<p>${esc(d.notes)}</p>` : ''}<div class="qd-lines-blank"></div></section>
+      <section class="qd-signs">
+        <div><p class="qd-lbl">Livré par</p><p class="qd-small">${d.carrier ? esc(d.carrier) + ' — ' : ''}nom et signature.</p><div class="qd-box"></div></div>
+        <div><p class="qd-lbl">Reçu par le client</p><p class="qd-small">Marchandise reçue en bon état et conforme, sauf réserves ci-dessus. Date, nom et signature.</p><div class="qd-box"></div></div>
+      </section>
+      ${legal ? `<footer class="qd-foot">${esc(co.name || 'Luxor Création')} · ${esc(legal)}</footer>` : ''}
+    </article>`;
+  $$('[data-dstatus]', v).forEach(b => b.onclick = async () => {
+    if (b.dataset.dstatus === d.status) return;
+    const r = await busy(b, S.setDeliveryStatus(d.id, b.dataset.dstatus), b.dataset.dstatus === 'delivered' ? 'Delivery note marked as delivered and signed.' : 'Delivery note back to draft.');
+    if (r?.orderDelivered) toast('Everything on the purchase order is delivered: the order is now marked as delivered.');
+  });
+  $('#dprint', v).onclick = () => { document.body.classList.add('print-quote'); window.print(); };
+  $('#ddel', v).onclick = () => confirmBox({ title: `Delete delivery note ${d.number}?`, text: 'The delivery note will be permanently deleted. Its items count as not delivered again.', ok: 'Delete delivery note', run: () => S.removeDelivery(d.id), done: () => { toast(`Delivery note ${d.number} deleted.`); location.hash = o ? '#/clients/order/' + o.id : '#/clients'; } });
+  const ed = $('#dedit', v); if (ed) ed.onclick = () => openDeliveryEditor(d);
 }
 
 /* ---------------- payments ---------------- */

@@ -430,6 +430,8 @@ section.card+section.card{margin-top:18px}
 [data-theme=dark] .o-confirmed{color:var(--or)}
 .o-delivered{background:var(--pastel);color:var(--vert)}
 .o-cancelled{background:var(--neg-bg);color:var(--neg-tx)}
+.d-draft{background:var(--soft);color:var(--text);border:1px solid var(--line)}
+.d-delivered{background:var(--pastel);color:var(--vert)}
 .modal-card.wide{width:min(980px,100%)}
 .m-body.single{display:block}
 .q-lines{margin:18px 0 6px;padding:16px;border-radius:20px;background:var(--bg);border:1px solid var(--line)}
@@ -501,6 +503,19 @@ section.card+section.card{margin-top:18px}
 .order-doc .qd-title h2{font-size:24px;letter-spacing:.08em}
 .qd-color{font-weight:600;white-space:nowrap}
 .qd-table tfoot td{padding:10px 12px;font-size:12px;font-weight:600;color:#4a635b}
+.dl-head,.dl-line{display:grid;grid-template-columns:52px minmax(0,1fr) 150px 150px 110px 36px;gap:8px;align-items:center}
+.dl-head{font-size:12px;font-weight:600;color:var(--muted);padding:0 12px 8px}
+.dl-line{margin-bottom:10px;padding:10px;border-radius:18px;background:var(--card);border:1px solid var(--line)}
+.dl-line input{height:40px;padding:0 14px;border-radius:999px;border:1.5px solid var(--line);background:var(--card);color:var(--text);outline:0;min-width:0;width:100%}
+.dl-line input:focus{border-color:var(--text)}
+.dl-line input[readonly]{background:var(--bg);border-color:transparent;font-weight:600}
+.dl-line .dl-qty{text-align:right;font-weight:700}
+.dl-info{font-size:13px;line-height:1.3}
+.dl-progress{margin-bottom:18px}
+.qd-reserve{margin-top:18px;padding:14px 16px;border:1px solid #E9DDC8;border-radius:12px;break-inside:avoid}
+.qd-reserve p{margin:0 0 6px;font-size:12.5px}
+.qd-lines-blank{height:54px;background:repeating-linear-gradient(transparent 0 26px,#E9DDC8 26px 27px)}
+.qd-partial{margin:4px 0 0;font-size:12.5px;font-weight:600;color:#86691a}
 .ql-tools{display:flex;gap:12px;align-items:center;white-space:nowrap}
 .q-line.ql-new{animation:qlNew 1.2s ease}
 @keyframes qlNew{from{box-shadow:0 0 0 3px var(--or)}to{box-shadow:0 0 0 0 transparent}}
@@ -516,6 +531,9 @@ section.card+section.card{margin-top:18px}
   .ql-main .ql-total{grid-column:1/4;text-align:left}
   .ql-main .ql-del{grid-column:4;grid-row:3}
   .ql-more{margin-left:0}
+  .dl-head{display:none}
+  .dl-line{grid-template-columns:52px 1fr 1fr 34px}
+  .dl-line .dl-label{grid-column:2/-1}.dl-line .dl-color{grid-column:1/3}.dl-line .dl-info{grid-column:3/-1}.dl-line .dl-qty{grid-column:1/4}
   .ql-specs{grid-template-columns:1fr}
   .q-bottom{grid-template-columns:1fr}
   .qd-parties,.qd-sum,.qd-sign,.qd-signs{grid-template-columns:1fr}

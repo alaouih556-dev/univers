@@ -43,6 +43,11 @@ const mapQuote = q => ({
   discount: +q.discount, vat: q.vat, depositPct: q.deposit_pct, notes: q.notes, projectId: q.project_id,
   items: mapItems(q.quote_items)
 });
+const mapDelivery = d => ({
+  id: d.id, number: d.number, clientId: d.client_id, orderId: d.order_id, date: d.date, status: d.status,
+  deliveryAddress: d.delivery_address, carrier: d.carrier, notes: d.notes,
+  items: (d.delivery_items || []).sort((a, b) => a.sort - b.sort).map(i => ({ id: i.id, label: i.label, qty: +i.qty, qtyOrdered: i.qty_ordered == null ? null : +i.qty_ordered, image: i.image || '', description: i.description || '', material: i.material || '', dimensions: i.dimensions || '', color: i.color || '' }))
+});
 const mapOrder = o => ({
   id: o.id, number: o.number, clientId: o.client_id, quoteId: o.quote_id, date: o.date, title: o.title, type: o.type, status: o.status,
   discount: +o.discount, vat: o.vat, depositPct: o.deposit_pct, paymentMethod: o.payment_method, deliveryAddress: o.delivery_address,
@@ -51,7 +56,7 @@ const mapOrder = o => ({
 
 async function getAll(token) {
   const o = { token };
-  const [clients, projects, payments, messages, quotes, revenue, company, orders] = await Promise.all([
+  const [clients, projects, payments, messages, quotes, revenue, company, orders, deliveries] = await Promise.all([
     rest('clients?select=*&order=name', o),
     rest('projects?select=*,project_pieces(*),project_events(*)&order=start_date.desc', o),
     rest('payments?select=*&order=date,created_at', o),
@@ -59,11 +64,12 @@ async function getAll(token) {
     rest('quotes?select=*,quote_items(*)&order=date.desc,number.desc', o),
     rest('revenue_history?select=*', o),
     rest('company?select=*&id=eq.1', o),
-    rest('orders?select=*,order_items(*)&order=date.desc,number.desc', o).catch(() => [])   // empty until orders.sql has been run
+    rest('orders?select=*,order_items(*)&order=date.desc,number.desc', o).catch(() => []),   // empty until orders.sql has been run
+    rest('deliveries?select=*,delivery_items(*)&order=date.desc,number.desc', o).catch(() => [])   // empty until deliveries.sql has been run
   ]);
   return {
     clients: clients.map(mapClient), projects: projects.map(mapProject), payments: payments.map(mapPayment),
-    messages: messages.map(mapMessage), quotes: quotes.map(mapQuote), orders: orders.map(mapOrder),
+    messages: messages.map(mapMessage), quotes: quotes.map(mapQuote), orders: orders.map(mapOrder), deliveries: deliveries.map(mapDelivery),
     revenue: Object.fromEntries(revenue.map(r => [`${r.year}-${r.month}`, { amount: r.amount, sample: r.sample }])),
     company: company[0] || { name: 'Luxor Création' }
   };
@@ -235,6 +241,91 @@ async function setOrderStatus(token, oid, { status } = {}) {
 }
 const removeOrder = (token, oid) => rest(`orders?id=eq.${id(oid)}`, { token, method: 'DELETE' });
 
+/* ---------------- delivery notes (bons de livraison) ----------------
+ * Records what was actually delivered on a purchase order (a delivery note always comes from one).
+ * An order can be delivered in several times: each line can only deliver what is still left. No prices on the note.
+ * When every line of the order has been delivered on signed notes, the order becomes "delivered". */
+const DELIVERY_STATUS = ['draft', 'delivered'];
+const deliveriesMissing = e => { if (/deliver|schema cache/i.test(e.message)) throw new ApiError(503, 'The database needs an update: run backend/supabase/deliveries.sql in Supabase.'); throw e; };
+const lineKey = i => [i.label, i.color, i.dimensions].map(x => String(x || '').trim().toLowerCase()).join('|');
+const fmtQty = n => String(Math.round(n * 100) / 100);
+
+/* quantities already delivered for each order line, on the order's other delivery notes */
+async function deliveredForOrder(token, orderId, exceptId, signedOnly = false) {
+  const rows = await rest(`deliveries?select=id,status,delivery_items(label,color,dimensions,qty)&order_id=eq.${orderId}`, { token });
+  const done = new Map();
+  for (const d of rows) {
+    if (d.id === exceptId || (signedOnly && d.status !== 'delivered')) continue;
+    for (const i of d.delivery_items || []) done.set(lineKey(i), (done.get(lineKey(i)) || 0) + +i.qty);
+  }
+  return done;
+}
+
+async function saveDelivery(token, did, data = {}) {
+  const cid = id(data.clientId || 'x');
+  await clientExists(token, cid);
+  if (did) {
+    did = id(did);
+    const [d] = await rest(`deliveries?select=status&id=eq.${did}`, { token }).catch(deliveriesMissing);
+    if (!d) throw new ApiError(404, 'Delivery note not found.');
+    if (d.status === 'delivered') throw new ApiError(400, 'This delivery note is signed and can no longer be edited.');
+  }
+  const items = (Array.isArray(data.items) ? data.items : []).slice(0, 100).map(i => ({
+    label: clean(i.label, 200), qty: Math.round((+i.qty || 0) * 100) / 100, qty_ordered: i.qtyOrdered == null || i.qtyOrdered === '' ? null : Math.round(+i.qtyOrdered * 100) / 100 || null,
+    image: safeImage(i.image), description: cleanText(i.description, 1000), material: clean(i.material, 200), dimensions: clean(i.dimensions, 200), color: clean(i.color, 200)
+  })).filter(i => i.label && i.qty > 0);   // lines with 0 delivered are simply not on this note
+  if (!items.length) throw new ApiError(400, 'Deliver at least one item (quantity above 0).');
+
+  if (!data.orderId) throw new ApiError(400, 'Choose the purchase order to deliver.');
+  const orderId = id(data.orderId);
+  {
+    const [o] = await rest(`orders?select=id,client_id,status,order_items(label,color,dimensions,qty)&id=eq.${orderId}`, { token });
+    if (!o) throw new ApiError(404, 'Order not found.');
+    if (o.client_id !== cid) throw new ApiError(400, 'The purchase order belongs to another client.');
+    if (o.status === 'draft') throw new ApiError(400, 'Confirm the purchase order before delivering it.');
+    if (o.status === 'cancelled') throw new ApiError(400, 'This purchase order is cancelled.');
+    // each line can deliver at most what is still left on the order
+    const ordered = new Map(); for (const i of o.order_items || []) ordered.set(lineKey(i), (ordered.get(lineKey(i)) || 0) + +i.qty);
+    const done = await deliveredForOrder(token, orderId, did);
+    const now = new Map();
+    for (const i of items) {
+      const k = lineKey(i);
+      if (!ordered.has(k)) throw new ApiError(400, `${i.label}${i.color ? ' (' + i.color + ')' : ''} is not on the purchase order.`);
+      i.qty_ordered = ordered.get(k);
+      now.set(k, (now.get(k) || 0) + i.qty);
+      const left = ordered.get(k) - (done.get(k) || 0);
+      if (now.get(k) > left + 1e-9) throw new ApiError(400, `${i.label}${i.color ? ' (' + i.color + ')' : ''}: only ${fmtQty(Math.max(0, left))} left to deliver.`);
+    }
+  }
+  const fields = { client_id: cid, order_id: orderId, date: isDate(data.date) ? data.date : iso(today()), delivery_address: clean(data.deliveryAddress, 300), carrier: clean(data.carrier, 120), notes: clean(data.notes, 1200) };
+  if (did) {
+    await rest(`deliveries?id=eq.${did}`, { token, method: 'PATCH', body: fields });
+    await rest(`delivery_items?delivery_id=eq.${did}`, { token, method: 'DELETE' });
+  } else {
+    const [d] = await rest('deliveries', { token, method: 'POST', body: fields, headers: ret }).catch(deliveriesMissing);   // number BL-YYYY-NNN set by the database
+    did = d.id;
+  }
+  await rest('delivery_items', { token, method: 'POST', body: items.map((i, n) => ({ ...i, delivery_id: did, sort: n })) });
+  return did;
+}
+
+async function setDeliveryStatus(token, did, { status } = {}) {
+  if (!DELIVERY_STATUS.includes(status)) throw new ApiError(400, 'Unknown status.');
+  const rows = await rest(`deliveries?id=eq.${id(did)}`, { token, method: 'PATCH', body: { status }, headers: ret });
+  if (!rows?.length) throw new ApiError(404, 'Delivery note not found.');
+  const orderId = rows[0].order_id;
+  if (status !== 'delivered' || !orderId) return { orderDelivered: false };
+  // everything on the order delivered on signed notes → the order is delivered
+  const [o] = await rest(`orders?select=status,order_items(label,color,dimensions,qty)&id=eq.${orderId}`, { token });
+  if (!o || o.status !== 'confirmed') return { orderDelivered: false };
+  const done = await deliveredForOrder(token, orderId, null, true);
+  const ordered = new Map(); for (const i of o.order_items || []) ordered.set(lineKey(i), (ordered.get(lineKey(i)) || 0) + +i.qty);
+  const complete = [...ordered].every(([k, q]) => (done.get(k) || 0) >= q - 1e-9);
+  if (complete) await rest(`orders?id=eq.${orderId}`, { token, method: 'PATCH', body: { status: 'delivered' } });
+  return { orderDelivered: complete };
+}
+const removeDelivery = (token, did) => rest(`deliveries?id=eq.${id(did)}`, { token, method: 'DELETE' });
+
 /* ---------------- company details & sample data ---------------- */
 async function saveCompany(token, data = {}) {
   const body = Object.fromEntries(COMPANY_FIELDS.map(k => [k, clean(data[k], k === 'bank' ? 80 : 120)]));
@@ -251,6 +342,6 @@ async function removeSampleData(token) {
 module.exports = {
   getAll, updateStatus, toggleStep, addPayment, addNote, markRead,
   addClient, updateClient, removeClient, saveQuote, setQuoteStatus, removeQuote, convertQuote,
-  saveOrder, setOrderStatus, removeOrder,
+  saveOrder, setOrderStatus, removeOrder, saveDelivery, setDeliveryStatus, removeDelivery,
   saveCompany, removeSampleData
 };
