@@ -103,4 +103,35 @@ async function removeProduct(token, slug) {
   await deletePhotos(token, rows[0]);
 }
 
-module.exports = { publicCatalog, load, createProduct, updateProduct, removeProduct };
+/* ---------------- admin: categories ----------------
+ * id = short web name used in the site address (/catalogue/<id>/), created from the name, never changed. */
+async function createCategory(token, b = {}) {
+  const name = String(b.name || '').trim().slice(0, 80);
+  if (!name) throw new ApiError(400, 'Enter the category name.');
+  const existing = await rest('categories?select=id,name,sort', { token });
+  if (existing.some(c => c.name.trim().toLowerCase() === name.toLowerCase())) throw new ApiError(400, 'This category already exists.');
+  const base = slugify(name) || 'categorie';
+  let cid = base, i = 2;
+  while (existing.some(c => c.id === cid)) cid = `${base}-${i++}`;
+  const sort = Math.max(0, ...existing.map(c => c.sort || 0)) + 1;
+  const [c] = await rest('categories', { token, method: 'POST', body: { id: cid, name, description: String(b.description || '').trim().slice(0, 300), sort }, headers: ret });
+  return c;
+}
+async function updateCategory(token, cid, b = {}) {
+  const body = {};
+  if ('name' in b) { body.name = String(b.name || '').trim().slice(0, 80); if (!body.name) throw new ApiError(400, 'Enter the category name.'); }
+  if ('description' in b) body.description = String(b.description || '').trim().slice(0, 300);
+  const rows = await rest(`categories?id=eq.${encodeURIComponent(cid)}`, { token, method: 'PATCH', body, headers: ret });
+  if (!rows?.length) throw new ApiError(404, 'Category not found.');
+  return rows[0];
+}
+async function removeCategory(token, cid) {
+  const used = await rest(`products?select=id&category=eq.${encodeURIComponent(cid)}`, { token });
+  if (used.length) throw new ApiError(400, `This category still has ${used.length} product${used.length > 1 ? 's' : ''}: move ${used.length > 1 ? 'them' : 'it'} to another category or delete ${used.length > 1 ? 'them' : 'it'} first.`);
+  const all = await rest('categories?select=id', { token });
+  if (all.length <= 1) throw new ApiError(400, 'Keep at least one category.');
+  const rows = await rest(`categories?id=eq.${encodeURIComponent(cid)}`, { token, method: 'DELETE', headers: ret });
+  if (!rows?.length) throw new ApiError(404, 'Category not found.');
+}
+
+module.exports = { publicCatalog, load, createProduct, updateProduct, removeProduct, createCategory, updateCategory, removeCategory };

@@ -532,6 +532,15 @@ section.card+section.card{margin-top:18px}
 .inv-need{margin:0 0 12px;padding:14px 16px;border-radius:14px;border:1.5px solid var(--or);background:rgba(212,175,55,.08)}
 .inv-need p{margin:0 0 10px;font-size:13px}
 body.pdf-export .quote-doc{border:0!important;box-shadow:none!important;border-radius:0!important;background:#fff!important;color:#1E2B27!important;max-width:none}
+.newcat{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:10px;border-radius:16px;border:1.5px dashed var(--or);background:rgba(212,175,55,.06)}
+.newcat input{flex:1;min-width:160px}.newcat .form-err{flex-basis:100%;margin:0}
+.cat-list{list-style:none;margin:14px 0;padding:0;display:grid;gap:8px}
+.cat-list li{display:grid;grid-template-columns:minmax(0,1fr) 110px 36px 36px;gap:8px;align-items:center;padding:8px 10px;border-radius:16px;background:var(--bg);border:1px solid var(--line)}
+.cat-list .cat-name{height:38px;padding:0 14px;border-radius:999px;border:1.5px solid transparent;background:transparent;color:var(--text);font:inherit;font-weight:600;outline:0;min-width:0}
+.cat-list .cat-name:hover{border-color:var(--line)}.cat-list .cat-name:focus{border-color:var(--text);background:var(--card)}
+.cat-list .icon-btn[disabled]{opacity:.35;cursor:not-allowed}
+.newcat-form{display:flex;gap:8px}.newcat-form input{flex:1;height:44px;padding:0 18px;border-radius:999px;border:1.5px solid var(--line);background:var(--bg);color:var(--text);outline:0;font:inherit}
+.newcat-form input:focus{border-color:var(--text)}
 .full-btn{width:100%;justify-content:center;margin-top:12px}
 .qd-words{margin:0 0 14px;font-size:13px;font-weight:600;font-style:italic;color:#2F4F46}
 .qd-pays{width:100%;border-collapse:collapse;font-size:12px;margin-bottom:10px}

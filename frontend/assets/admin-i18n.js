@@ -74,7 +74,11 @@ const FR = {
   'No quote with this status.': 'Aucun devis avec ce statut.', 'No quotes yet — use “New quote” on a client card.': 'Aucun devis pour le moment — utilisez « Nouveau devis » sur une fiche client.',
   'New quote': 'Nouveau devis', 'Edit quote': 'Modifier le devis', 'Create quote': 'Créer le devis', 'Save quote': 'Enregistrer le devis', 'Quote created as a draft.': 'Devis créé en brouillon.', 'Quote saved.': 'Devis enregistré.',
   'Client *': 'Client *', 'Valid for (days)': 'Validité (jours)', 'Description': 'Description', 'Qty': 'Qté', 'Quantity': 'Quantité', 'Unit price (MAD, excl. VAT)': 'Prix unitaire (MAD, HT)', 'Unit price': 'Prix unitaire', 'Line total': 'Total ligne',
-  'Piece or service': 'Pièce ou prestation', 'Product or service': 'Produit ou prestation', 'Choose a catalog product or type a service': 'Choisissez un produit du catalogue ou saisissez une prestation', 'Description shown on the quote': 'Description affichée sur le devis', 'Remove photo': 'Retirer la photo', 'From the catalog': 'Du catalogue', 'Other item': 'Autre article', 'Item source': 'Origine de l’article',
+  'Piece or service': 'Pièce ou prestation', 'Product or service': 'Produit ou prestation', 'Choose a catalog product or type a service': 'Choisissez un produit du catalogue ou saisissez une prestation', 'Description shown on the quote': 'Description affichée sur le devis', 'Remove photo': 'Retirer la photo', 'Categories': 'Catégories', '+ New category…': '+ Nouvelle catégorie…', 'Name of the new category (e.g. Luminaires)': 'Nom de la nouvelle catégorie (ex. Luminaires)',
+  'New category name': 'Nom de la nouvelle catégorie', 'New category (e.g. Luminaires)': 'Nouvelle catégorie (ex. Luminaires)', 'Category name': 'Nom de la catégorie', 'Delete category': 'Supprimer la catégorie',
+  'Move or delete its products first': 'Déplacez ou supprimez d’abord ses produits', 'Category renamed.': 'Catégorie renommée.',
+  'Categories of the products on the website. A category can only be deleted when it has no products.': 'Catégories des produits du site. Une catégorie ne peut être supprimée que si elle n’a aucun produit.',
+  'Enter the category name.': 'Saisissez le nom de la catégorie.', 'This category already exists.': 'Cette catégorie existe déjà.', 'Category not found.': 'Catégorie introuvable.', 'Keep at least one category.': 'Gardez au moins une catégorie.', 'From the catalog': 'Du catalogue', 'Other item': 'Autre article', 'Item source': 'Origine de l’article',
   'Choose a product…': 'Choisir un produit…', 'Loading the catalog…': 'Chargement du catalogue…', 'Catalog product': 'Produit du catalogue',
   'Item not in the catalog (e.g. custom piece, delivery)': 'Article hors catalogue (ex. pièce sur mesure, livraison)', 'Item not in the catalog (e.g. wood, fabric)': 'Article hors catalogue (ex. bois, tissu)',
   'From the catalog fills the photo, description, details and price. Other item is for anything not in the catalog.': '« Du catalogue » remplit la photo, la description, les détails et le prix. « Autre article » sert pour tout ce qui n’est pas au catalogue.', 'Tip: choose a catalog product to fill its photo, description, details and price.': 'Astuce : choisissez un produit du catalogue pour remplir sa photo, sa description, ses détails et son prix.', 'The database needs an update: run backend/supabase/quote_items_details.sql in Supabase.': 'La base de données doit être mise à jour : exécutez backend/supabase/quote_items_details.sql dans Supabase.', 'Price': 'Prix', 'Remove line': 'Supprimer la ligne', 'Add line': 'Ajouter une ligne',
@@ -211,6 +215,9 @@ const RX = [
   [/^This will also permanently delete$/, () => 'Cela supprimera aussi définitivement'], [/^linked to this client\. This cannot be undone\.$/, () => 'liés à ce client. Cette action est irréversible.'],
   [/^\d+ (projects?|payments?|quotes?)\b(?!.* (due|open quotes|in progress|finished|delivered)).*$/, k => k.replace(/(\d+) projects?\b/, (_, a) => `${a} projet${pl(a, '', 's')}`).replace(/(\d+) payments?\b/, (_, a) => `${a} paiement${pl(a, '', 's')}`).replace(/(\d+) quotes?\b/, '$1 devis')],
   [/^ · expired$/, () => ' · expiré'], [/^Discount (\S+)%$/, (_, a) => `Remise ${a} %`], [/^Deposit (\S+)%$/, (_, a) => `Acompte ${a} %`], [/^Total incl\. VAT$/, () => 'Total TTC'],
+  [/^Category “(.+)” (added|deleted)\.$/, (_, a, b) => `Catégorie « ${a} » ${b === 'added' ? 'ajoutée' : 'supprimée'}.`], [/^Delete the category “(.+)”\?$/, (_, a) => `Supprimer la catégorie « ${a} » ?`],
+  [/^(\d+) products?$/, (_, a) => `${a} produit${pl(a, '', 's')}`],
+  [/^This category still has (\d+) products?: move (?:them|it) to another category or delete (?:them|it) first\.$/, (_, a) => `Cette catégorie contient encore ${a} produit${pl(a, '', 's')} : déplacez-le${pl(a, '', 's')} vers une autre catégorie ou supprimez-le${pl(a, '', 's')} d’abord.`],
   [/^Invoice · (.*)$/, (_, a) => `Facture · ${a}`], [/^Invoice (FA-\S+)$/, (_, a) => `Facture ${a}`],
   [/^An invoice with the next number will be created for “(.+)” \((.+)\)\. It is a legal document: it cannot be changed or deleted afterwards\.$/, (_, a, b) => `Une facture portant le numéro suivant sera créée pour « ${a} » (${b}). C’est un document légal : elle ne pourra plus être modifiée ni supprimée.`],
   [/^Reception note · (.*)$/, (_, a) => `Bon de réception · ${a}`], [/^(\d+) reception notes?$/, (_, a) => `${a} bon${pl(a, '', 's')} de réception`], [/^Edit reception note (.+)$/, (_, a) => `Modifier le bon de réception ${a}`],
@@ -311,6 +318,7 @@ window.LuxorI18n = {
   get locale() { return lang === 'fr' ? 'fr-FR' : 'en-GB'; },
   get numLocale() { return lang === 'fr' ? 'fr-FR' : 'en-US'; },
   set(l) { if (l === lang) return; lang = l === 'fr' ? 'fr' : 'en'; localStorage.setItem(KEY, lang); apply(); dispatchEvent(new CustomEvent('luxor-lang', { detail: lang })); },
-  toggle() { this.set(lang === 'fr' ? 'en' : 'fr'); }
+  toggle() { this.set(lang === 'fr' ? 'en' : 'fr'); },
+  t: str => lang === 'fr' ? tx(str) : str   // for texts the page cannot show itself (e.g. browser confirm dialogs)
 };
 })();

@@ -21,6 +21,7 @@
  *   POST   /api/admin/projects/:id/invoice     issue the invoice of a fully paid project (never edited or deleted)
  *   PUT    /api/admin/company        DELETE /api/admin/sample-data
  *   GET    /api/admin/catalog        POST /api/admin/products   PATCH|DELETE /api/admin/products/:slug
+ *   POST   /api/admin/categories     PATCH|DELETE /api/admin/categories/:id
  */
 'use strict';
 const { ApiError } = require('./supabase');
@@ -71,6 +72,9 @@ const routes = [
   ['PUT', '/admin/company', ({ token, body }) => admin.saveCompany(token, body), { admin: true }],
   ['DELETE', '/admin/sample-data', ({ token }) => admin.removeSampleData(token), { admin: true }],
 
+  ['POST', '/admin/categories', ({ token, body }) => catalog.createCategory(token, body).then(category => ({ category })), { admin: true }],
+  ['PATCH', '/admin/categories/:id', ({ token, p, body }) => catalog.updateCategory(token, p.id, body).then(category => ({ category })), { admin: true }],
+  ['DELETE', '/admin/categories/:id', ({ token, p }) => catalog.removeCategory(token, p.id), { admin: true }],
   ['GET', '/admin/catalog', ({ token }) => catalog.load(token), { admin: true }],
   ['POST', '/admin/products', ({ token, body }) => catalog.createProduct(token, body).then(product => ({ product })), { admin: true }],
   ['PATCH', '/admin/products/:slug', ({ token, p, body }) => catalog.updateProduct(token, p.slug, body).then(product => ({ product })), { admin: true }],

@@ -79,7 +79,10 @@ const api = {
   list: () => call('/admin/catalog'),
   create: b => call('/admin/products', { method: 'POST', body: b }),
   update: (p, b) => call('/admin/products/' + encodeURIComponent(p.slug), { method: 'PATCH', body: b }),
-  remove: p => call('/admin/products/' + encodeURIComponent(p.slug), { method: 'DELETE' })
+  remove: p => call('/admin/products/' + encodeURIComponent(p.slug), { method: 'DELETE' }),
+  addCategory: b => call('/admin/categories', { method: 'POST', body: b }),
+  renameCategory: (id, b) => call('/admin/categories/' + encodeURIComponent(id), { method: 'PATCH', body: b }),
+  removeCategory: id => call('/admin/categories/' + encodeURIComponent(id), { method: 'DELETE' })
 };
 
 
@@ -1267,7 +1270,7 @@ async function viewCatalog(v) {
     catch (x) { if (x.message !== 'auth') v.innerHTML = `${titleRow('Catalog')}<div class="card white"><p class="form-err">${esc(x.message)}</p></div>`; return; }
     if (ui.route !== 'catalog') return;
   }
-  v.innerHTML = `${titleRow('Catalog', `<button class="btn primary" id="addbtn">${ico('plus')}New product</button>`)}
+  v.innerHTML = `${titleRow('Catalog', `<div class="row-gap"><button class="btn outline" id="catbtn">${ico('gear')}Categories</button><button class="btn primary" id="addbtn">${ico('plus')}New product</button></div>`)}
     <section class="mini-stats four" id="stats"></section>
     <section class="card white tbl-card">
       <div class="card-head"><h2>Products on the website</h2><div class="row-gap"><label class="search-pill">${ico('search')}<input type="search" id="q" placeholder="Search a product or reference…" value="${esc(state.q)}" aria-label="Search products"></label>
@@ -1275,6 +1278,7 @@ async function viewCatalog(v) {
       <div class="tbl-wrap"><table class="ptbl cat-tbl"><thead><tr><th>Product</th><th>Category</th><th class="num">Price (MAD)</th><th>Tags</th><th class="act">Actions</th></tr></thead><tbody id="rows"></tbody></table>
       <p class="empty" id="empty" hidden>No product matches your search.</p></div></section>`;
   $('#addbtn', v).onclick = () => openEditor(null);
+  $('#catbtn', v).onclick = openCategories;
   $('#q', v).oninput = e => { state.q = e.target.value; renderRows(); };
   $('#catf', v).onchange = e => { state.cat = e.target.value; renderRows(); };
   renderRows();
@@ -1345,6 +1349,67 @@ function readPhoto(file) {
   });
 }
 
+/* ---------------- categories (add / rename / delete) ---------------- */
+const NEWCAT = '__new__';
+const catOptions = sel => state.categories.map(c => `<option value="${c.id}" ${sel === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('') + `<option value="${NEWCAT}">+ New category…</option>`;
+/* in the product form: choosing "+ New category…" opens a small field under the list */
+function wireNewCategory(form) {
+  const sel = form.category; let prev = sel.value;
+  sel.addEventListener('change', () => {
+    if (sel.value !== NEWCAT) { prev = sel.value; return; }
+    sel.value = prev;
+    if ($('.newcat', form)) return $('.newcat input', form).focus();
+    sel.closest('label').insertAdjacentHTML('afterend', `<div class="newcat full"><input maxlength="80" placeholder="Name of the new category (e.g. Luminaires)" aria-label="New category name"><button type="button" class="btn primary sm-btn" data-addcat>${ico('plus')}Add</button><button type="button" class="icon-btn ghost" data-cancelcat aria-label="Cancel">${ico('x')}</button><p class="form-err"></p></div>`);
+    const box = $('.newcat', form), inp = $('input', box), err = $('.form-err', box);
+    const add = async () => {
+      const b = $('[data-addcat]', box); b.disabled = true; err.textContent = '';
+      try { const d = await api.addCategory({ name: inp.value }); state.categories.push(d.category); sel.innerHTML = catOptions(d.category.id); prev = d.category.id; box.remove(); toast(`Category “${d.category.name}” added.`); }
+      catch (x) { if (x.message !== 'auth') err.textContent = x.message; b.disabled = false; }
+    };
+    $('[data-addcat]', box).onclick = add;
+    inp.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); add(); } });
+    $('[data-cancelcat]', box).onclick = () => box.remove();
+    inp.focus();
+  });
+}
+function openCategories() {
+  const m = openModal(`<div class="m-head"><h2>Categories</h2><button type="button" class="icon-btn" data-close aria-label="Close">${ico('x')}</button></div>
+    <div class="m-body single"><p class="muted small">Categories of the products on the website. A category can only be deleted when it has no products.</p>
+      <ul class="cat-list" id="catlist"></ul>
+      <form class="newcat-form" id="catform"><input name="name" maxlength="80" placeholder="New category (e.g. Luminaires)" aria-label="New category name" required><button class="btn primary" type="submit">${ico('plus')}Add</button></form>
+      <p class="form-err" id="caterr" role="alert"></p></div>
+    <div class="m-foot"><button type="button" class="btn outline" data-close>Close</button></div>`);
+  const list = $('#catlist', m), err = $('#caterr', m);
+  const count = id => state.products.filter(p => p.category === id).length;
+  const draw = () => {
+    list.innerHTML = state.categories.map(c => { const n = count(c.id); return `<li data-id="${esc(c.id)}"><input class="cat-name" maxlength="80" value="${esc(c.name)}" aria-label="Category name"><span class="muted small">${n} product${n === 1 ? '' : 's'}</span>
+      <a class="icon-btn ghost" href="../catalogue/${esc(c.id)}/" target="_blank" rel="noopener" title="View on the website" aria-label="View on the website">${ico('eye')}</a>
+      <button class="icon-btn danger" data-delcat ${n ? 'disabled' : ''} title="${n ? 'Move or delete its products first' : 'Delete category'}" aria-label="Delete category">${ico('trash')}</button></li>`; }).join('');
+  };
+  draw();
+  const refreshPage = () => { if (ui.route === 'catalog' && $('#rows')) { $('#catf').innerHTML = `<option value="">All categories</option>${state.categories.map(c => `<option value="${c.id}" ${state.cat === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}`; renderRows(); } };
+  $('#catform', m).onsubmit = async e => {
+    e.preventDefault(); err.textContent = ''; const f = e.target, b = $('button', f); b.disabled = true;
+    try { const d = await api.addCategory({ name: f.name.value }); state.categories.push(d.category); f.reset(); draw(); refreshPage(); toast(`Category “${d.category.name}” added.`); }
+    catch (x) { if (x.message !== 'auth') err.textContent = x.message; }
+    b.disabled = false; f.name.focus();
+  };
+  list.addEventListener('change', async e => {   // rename
+    const inp = e.target.closest('.cat-name'); if (!inp) return;
+    const id = inp.closest('li').dataset.id, c = state.categories.find(x => x.id === id); err.textContent = '';
+    try { const d = await api.renameCategory(id, { name: inp.value }); Object.assign(c, d.category); refreshPage(); toast('Category renamed.'); }
+    catch (x) { if (x.message !== 'auth') err.textContent = x.message; inp.value = c.name; }
+  });
+  list.addEventListener('click', async e => {
+    const b = e.target.closest('[data-delcat]'); if (!b) return;
+    const id = b.closest('li').dataset.id, c = state.categories.find(x => x.id === id); err.textContent = '';
+    if (!confirm(L.t(`Delete the category “${c.name}”?`))) return;
+    b.disabled = true;
+    try { await api.removeCategory(id); state.categories = state.categories.filter(x => x.id !== id); if (state.cat === id) state.cat = ''; draw(); refreshPage(); toast(`Category “${c.name}” deleted.`); }
+    catch (x) { if (x.message !== 'auth') err.textContent = x.message; b.disabled = false; }
+  });
+  $('[name=name]', m).focus();
+}
 function openEditor(p) {
   const isNew = !p; p = p || { name: '', category: state.cat || state.categories[0]?.id, price: '', description: '', material: '', dimensions: '', color: '', new: true, featured: false };
   const m = openModal(`<form id="pform" class="pform" novalidate>
@@ -1356,7 +1421,7 @@ function openEditor(p) {
         </div>
         <div class="fields">
           <label class="full">Product name *<input name="name" required maxlength="120" value="${esc(p.name)}"></label>
-          <label>Category<select name="category">${state.categories.map(c => `<option value="${c.id}" ${p.category === c.id ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label>
+          <label>Category<select name="category">${catOptions(p.category)}</select></label>
           <label>Price (MAD) *<input name="price" type="number" min="0" step="1" required value="${esc(p.price)}"></label>
           <label class="full">Description<textarea name="description" rows="5" maxlength="4000">${esc(p.description)}</textarea></label>
           <label>Material<input name="material" maxlength="160" value="${esc(p.material)}"></label>
@@ -1370,6 +1435,7 @@ function openEditor(p) {
     </form>`);
   $$('[data-close]', m).forEach(b => b.onclick = closeModal);
   const f = $('#pform', m); let photo = null;
+  wireNewCategory(f);
   f.name.focus();
   $('#photo', m).onchange = async e => {
     const file = e.target.files[0]; if (!file) return;

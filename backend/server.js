@@ -7,7 +7,8 @@
  *   /api/*   → the backend API (backend/src/app.js), which talks to Supabase
  *   anything else → static files from frontend/
  * Online, Vercel does the same: frontend/ as static files + api/index.js as a serverless function.
- * Unknown /produit/<slug>/ pages fall back to frontend/produit/index.html (same rewrite as vercel.json).
+ * Unknown /produit/<slug>/ pages fall back to frontend/produit/index.html, unknown /catalogue/<id>/ to
+ * frontend/catalogue/categorie.html (same rewrites as vercel.json).
  * Settings are read from the .env file at the project root (SUPABASE_URL, SUPABASE_ANON_KEY).
  */
 'use strict';
@@ -51,6 +52,7 @@ http.createServer(async (req, res) => {
     let hit = await resolve(rel);
     if (hit?.dir && !url.pathname.endsWith('/')) return send(res, 301, '', { Location: url.pathname + '/' + url.search });
     if (!hit && /^\/produit\/[a-z0-9-]+\/?$/.test(url.pathname)) hit = await resolve('/produit/index.html');
+    if (!hit && /^\/catalogue\/[a-z0-9-]+\/?$/.test(url.pathname)) hit = await resolve('/catalogue/categorie.html');   // categories added from the admin
     if (!hit) return send(res, 404, 'Page introuvable', { 'Content-Type': 'text/plain; charset=utf-8' });
     const ext = path.extname(hit.file).toLowerCase();
     const headers = { 'Content-Type': MIME[ext] || 'application/octet-stream', 'Content-Length': hit.st.size, 'Cache-Control': ext === '.html' || ext === '.json' ? 'no-cache' : 'public, max-age=3600' };

@@ -12,6 +12,14 @@
     {
       "source": "/produit/:slug",
       "destination": "/produit/index.html"
+    },
+    {
+      "source": "/catalogue/:cat/",
+      "destination": "/catalogue/categorie.html"
+    },
+    {
+      "source": "/catalogue/:cat",
+      "destination": "/catalogue/categorie.html"
     }
   ],
   "headers": [
