@@ -637,24 +637,29 @@ body.hdr-compact .logo-txt{max-height:0;opacity:0;margin-top:0}
   .drawer{width:100vw}
   .drawer-level{padding:22px 22px 40px}
   .dr-main a,.dr-main button{font-size:18px;padding:12px 0}
-  .hs{height:calc(100svh - var(--hdr-full));min-height:480px;border-bottom-width:6px}
-  .hs-cap{left:20px;top:28px}
-  .hs-name{font-size:24px}
-  .hs-pause{left:16px;bottom:20px}
-  .hs-center{gap:40px}
-  .ev-logo{gap:0 12px;grid-template-columns:auto auto}
-  .ev-title{font-size:44px}
-  .ev-date{grid-column:2;margin-top:10px!important;font-size:20px}
+  /* home slides: show the whole 16:9 photo on phones */
+  .hs{height:auto;min-height:0;aspect-ratio:16/9;border-bottom-width:6px}
+  .hs-cap{left:14px;top:12px}
+  .hs-name{font-size:17px}
+  .hs-by{font-size:12px;margin-top:1px}
+  .hs-more{font-size:11px;margin-top:5px}
+  .hs-pause{left:6px;bottom:4px}.hs-pause svg{width:14px;height:14px}
+  .hs-center{gap:12px}
+  .hs-cta{font-size:10.5px}
+  .ev-logo{gap:0 8px;grid-template-columns:auto auto}
+  .ev-title{font-size:25px}
+  .ev-date{grid-column:2;margin-top:4px!important;font-size:13px}
   .ev-mark{grid-row:span 2}
-  .ev-mark{height:74px;gap:3px}
-  .ev-mark i{width:8px}
+  .ev-mark{height:46px;gap:2px}
+  .ev-mark i{width:5px}
   .ev-date{margin-top:8px}
   .duo-promo{height:520px}
   .duo-mag{height:auto;grid-template-rows:44px auto}
   .mag-t{font-size:30px}.mag-by{font-size:17px}
-  .mag-mosaic{grid-template-columns:1fr 1fr;grid-template-rows:none;grid-auto-rows:200px}
-  .mm,.mm.wide{grid-column:span 1}
-  .mm.wide{grid-column:span 2;}
+  /* Le Mag: one photo per row, shown whole at its own shape */
+  .mag-mosaic{grid-template-columns:1fr;grid-template-rows:none;grid-auto-rows:auto}
+  .mm,.mm.wide{grid-column:auto}
+  .mm img{position:relative;display:block;height:auto}
   .mm-badge{left:10px;bottom:30px;min-width:0;padding:10px 12px}
   .mm-badge b{font-size:18px;margin-bottom:12px}
   .ps-copy{padding:0 26px 50px}
