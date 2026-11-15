@@ -666,8 +666,8 @@ body.hdr-compact .logo-txt{max-height:0;opacity:0;margin-top:0}
   .mag-t{font-size:30px}.mag-by{font-size:17px}
   /* Le Mag: one photo per row, shown whole at its own shape */
   .mag-mosaic{grid-template-columns:1fr;grid-template-rows:none;grid-auto-rows:auto}
-  .mm,.mm.wide{grid-column:auto}
-  .mm img{position:relative;display:block;height:auto}
+  .mm,.mm.wide{grid-column:auto;aspect-ratio:4/3}
+  .mm img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
   .mm-badge{left:10px;bottom:30px;min-width:0;padding:10px 12px}
   .mm-badge b{font-size:18px;margin-bottom:12px}
   .ps-copy{padding:0 26px 50px}
