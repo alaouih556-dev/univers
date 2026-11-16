@@ -411,7 +411,14 @@ section.card+section.card{margin-top:18px}
 .cc-btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}.cc-btns .cc-quote{margin-top:0}
 .card.sable .btn.pill-sm,.card.pastel .btn.pill-sm{border-color:rgba(47,79,70,.25);color:var(--vert)}
 .card.sable .btn.pill-sm:hover,.card.pastel .btn.pill-sm:hover{background:var(--vert);color:var(--ivoire)}
-.cc-done{position:absolute;right:22px;bottom:22px}
+.cc-done{display:inline-flex;margin-top:6px;width:max-content}
+.chg.pos.cc-done,.card .chg.pos.cc-done{background:var(--vert);color:var(--ivoire)}   /* solid, readable on white, beige, green cards */
+[data-theme=dark] .chg.pos.cc-done{background:#E7C873;color:#1F3530}
+[data-theme=dark] .card.sable .chg.pos.cc-done,[data-theme=dark] .card.pastel .chg.pos.cc-done{background:var(--vert);color:var(--ivoire)}
+.card.sable .cc-top b,.card.pastel .cc-top b{color:var(--vert-ink)}
+.card.sable .cc-stats small,.card.pastel .cc-stats small{color:rgba(31,53,48,.68)}
+.card.sable .cc-stats b,.card.pastel .cc-stats b{color:var(--vert-ink)}
+.card.sable .cc-stats .gold-amount,.card.pastel .cc-stats .gold-amount{background:none;-webkit-text-fill-color:#8A6A12;color:#8A6A12}   /* darker gold on light cards */   /* client name stays dark on the light cards, also in dark mode */
 .cc-q{flex:1;min-width:0;margin-left:6px}
 .cc-projects a .i{width:15px;height:15px;opacity:.7}
 .tb-clients{grid-template-columns:1fr auto}
@@ -694,8 +701,11 @@ body.pdf-export .quote-doc{border:0!important;box-shadow:none!important;border-r
   .ptbl tbody tr:last-child{border-bottom:0}
   .ptbl td{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:6px 2px;border:0;text-align:right}
   .ptbl td::before{content:attr(data-l);font-size:12.5px;color:var(--muted);font-weight:600;text-align:left;flex:none}
-  .ptbl td[data-l="Project"],.ptbl td[data-l="Product"]{display:block;text-align:left}
-  .ptbl td[data-l="Project"]::before,.ptbl td[data-l="Product"]::before{content:none}
+  /* first cell (project / product): full width, no label — classes, not data-l, which is translated */
+  .ptbl td.c-main{display:block;text-align:left;padding-bottom:10px}
+  .ptbl td.c-main::before{content:none}
+  .ptbl td.c-main .pcell{min-width:0}
+  .ptbl td:empty,.ptbl td[data-l="Tags"]:not(:has(*)){display:none}
   .ptbl td.act{justify-content:flex-end;padding-top:10px}
   .ptbl td.act .btn{width:100%}
   .ptbl tbody tr:hover{background:none}
@@ -741,7 +751,8 @@ body.pdf-export .quote-doc{border:0!important;box-shadow:none!important;border-r
   .m-foot{position:sticky;bottom:0;background:var(--card);border-top:1px solid var(--line)}
   .m-foot .btn{flex:1}
   .client-grid{grid-template-columns:1fr}
-  .ptbl td[data-l="Price (MAD)"] .price-form input{width:110px}
+  .ptbl td.c-price .price-form input{width:110px}
+  .ptbl td.c-price .price-form:not(.dirty) .save{display:none}   /* the ✓ appears only after changing the price */
   .dock{bottom:14px}
   .toasts{left:16px;right:16px;bottom:80px}
 }

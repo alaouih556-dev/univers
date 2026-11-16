@@ -286,7 +286,7 @@ function fillProjects(root) {
   $('#prows', root).innerHTML = list.map(p => {
     const c = S.client(p.clientId), due = S.dueFor(p), late = p.status !== 'finished' && S.parse(p.deliveryDate) < S.today();
     return `<tr>
-      <td data-l="Project"><b class="p-title">${esc(p.title)}</b><small class="muted">${esc(p.ref)}</small></td>
+      <td data-l="Project" class="c-main"><b class="p-title">${esc(p.title)}</b><small class="muted">${esc(p.ref)}</small></td>
       <td data-l="Client">${esc(c?.name)}</td>
       <td data-l="Type"><span class="type t-${p.type}">${S.TYPE_LABEL[p.type]}</span></td>
       <td data-l="Status">${pill(p.status)}</td>
@@ -467,13 +467,13 @@ function viewClients(v) {
     <div class="toolbar tb-clients"><label class="search-pill">${ico('search')}<input type="search" id="csearch" placeholder="Search a client, city, email…" value="${esc(ui.cq || '')}" aria-label="Search clients"></label>
       <button class="btn outline" id="newquote">${ico('file')}New quote</button></div>
     ${rows.length ? `<section class="client-grid">${rows.map(({ c, ps, qs, os, ds, rs, fs, billed, due, done }, i) => `<article class="card ${['white', 'sable', 'white', 'pastel'][i % 4]} client-card" data-client="${c.id}">
-      <div class="cc-top"><span class="cc-av">${esc(initials(c.name))}</span><div><b>${esc(c.name)}</b><small class="muted">${S.CLIENT_TYPES[c.type]}${c.city ? ' · ' + esc(c.city) : ''}</small></div>
+      <div class="cc-top"><span class="cc-av">${esc(initials(c.name))}</span><div><b>${esc(c.name)}</b><small class="muted">${S.CLIENT_TYPES[c.type]}${c.city ? ' · ' + esc(c.city) : ''}</small>${done ? '<span class="chg pos cc-done">Completed</span>' : ''}</div>
         <div class="cc-act"><button class="icon-btn" data-editclient title="Edit client" aria-label="Edit ${esc(c.name)}">${ico('edit')}</button><button class="icon-btn danger" data-delclient title="Delete client" aria-label="Delete ${esc(c.name)}">${ico('trash')}</button></div></div>
       <ul class="contact compact">${c.phone ? `<li>${ico('phone')}<a href="tel:${esc(c.phone.replace(/\s/g, ''))}">${esc(c.phone)}</a></li>` : ''}${c.email ? `<li>${ico('mail')}<a href="mailto:${esc(c.email)}">${esc(c.email)}</a></li>` : ''}${c.address ? `<li>${ico('pin')}<span>${esc(c.address)}</span></li>` : ''}${!c.phone && !c.email && !c.address ? '<li class="muted">No contact details yet.</li>' : ''}</ul>
       <hr class="dash"><div class="cc-stats"><span><small>Projects</small><b>${ps.length}</b></span><span><small>Billed</small><b>${money(billed)}</b></span><span><small>Due</small><b class="${due ? 'gold-amount' : ''}">${money(due)}</b></span></div>
       ${ps.length || qs.length || os.length || ds.length || rs.length || fs.length ? `<div class="cc-projects">${ps.map(p => `<a href="#/projects/${p.id}">${esc(p.title)} ${pill(p.status)}</a>`).join('')}${qs.map(x => `<a href="#/clients/quote/${x.id}">${ico('file')}<span class="cc-q">${esc(x.number)} · ${money(S.quoteTotals(x).total)}</span> ${qpill(x.status)}</a>`).join('')}${os.map(x => `<a href="#/clients/order/${x.id}">${ico('file')}<span class="cc-q">${esc(x.number)} · ${money(S.quoteTotals(x).total)}</span> ${opill(x.status)}</a>`).join('')}${ds.map(x => `<a href="#/clients/delivery/${x.id}">${ico('file')}<span class="cc-q">${esc(x.number)} · ${fdate(x.date)}</span> ${dpill(x.status)}</a>`).join('')}${rs.map(x => `<a href="#/clients/receipt/${x.id}">${ico('file')}<span class="cc-q">${esc(x.number)} · ${esc(x.supplier.name)}</span> ${rpill(x.status)}</a>`).join('')}${fs.map(x => `<a href="#/clients/invoice/${x.id}">${ico('file')}<span class="cc-q">${esc(x.number)} · ${money(x.total)}</span> <span class="status r-validated">Paid</span></a>`).join('')}</div>` : ''}
       <div class="cc-btns"><button class="btn pill-sm cc-quote" data-quoteclient>${ico('plus')}New quote</button><button class="btn pill-sm cc-quote" data-orderclient>${ico('plus')}Purchase order</button><button class="btn pill-sm cc-quote" data-deliveryclient>${ico('plus')}Delivery note</button><button class="btn pill-sm cc-quote" data-receiptclient>${ico('plus')}Reception note</button></div>
-      ${done ? '<span class="chg pos cc-done">Completed</span>' : ''}</article>`).join('')}</section>`
+</article>`).join('')}</section>`
       : `<div class="card white empty-state"><p>${q ? 'No client matches your search.' : 'No clients yet.'}</p>${q ? '' : `<button class="btn primary" id="addclient2">${ico('plus')}Add your first client</button>`}</div>`}
     <section class="card white tbl-card quotes-card"><div class="card-head"><h2>Quotes <span class="muted">(devis)</span></h2>
       <div class="seg" role="tablist" aria-label="Filter quotes">${[['', 'All'], ...Object.entries(QS)].map(([k, l]) => `<button role="tab" aria-selected="${qf === k}" class="${qf === k ? 'on' : ''}" data-qf="${k}">${l}</button>`).join('')}</div></div>
@@ -502,7 +502,7 @@ function viewClients(v) {
       : `<p class="empty">No reception notes yet — use “Reception note” on a client card when goods arrive from a supplier.</p>`}</section>
     <section class="card white tbl-card quotes-card"><div class="card-head"><h2>Invoices <span class="muted">(factures)</span></h2><span class="muted small">Issued from fully paid projects</span></div>
       ${db.invoices.length ? `<div class="tbl-wrap"><table class="ptbl"><thead><tr><th>Number</th><th>Client</th><th>Project</th><th>Date</th><th class="num">Total (TTC)</th><th></th></tr></thead><tbody>
-      ${db.invoices.map(x => `<tr><td data-l="Number"><b class="p-title">${esc(x.number)}</b></td><td data-l="Client">${esc(x.client?.name || '')}</td><td data-l="Project">${S.project(x.projectId) ? `<a href="#/projects/${x.projectId}">${esc(S.project(x.projectId).title)}</a>` : '—'}</td>
+      ${db.invoices.map(x => `<tr><td data-l="Number"><b class="p-title">${esc(x.number)}</b></td><td data-l="Client">${esc(x.client?.name || '')}</td><td data-l="Project" class="c-main">${S.project(x.projectId) ? `<a href="#/projects/${x.projectId}">${esc(S.project(x.projectId).title)}</a>` : '—'}</td>
         <td data-l="Date">${fdate(x.date)}</td><td data-l="Total (TTC)" class="num"><b>${money(x.total)}</b></td><td class="act"><a class="btn pill-sm" href="#/clients/invoice/${x.id}">Open</a></td></tr>`).join('')}</tbody></table></div>`
       : `<p class="empty">No invoices yet — open a project: when the remaining amount is 0, use “Issue the invoice”.</p>`}</section>`;
   const add = () => openClientForm(null);
@@ -1192,7 +1192,7 @@ function viewPayments(v) {
       <div class="balances">${open.map(p => { const pc = Math.round(S.paidFor(p) / p.totalPrice * 100); return `<a class="bal" href="#/projects/${p.id}"><div><b>${esc(p.title)}</b><small class="muted">${esc(S.client(p.clientId)?.name)}</small></div><div class="pbar gold"><i style="width:${pc}%"></i></div><span class="gold-amount">${money(S.dueFor(p))}</span></a>`; }).join('') || '<p class="muted">No open balance. 🎉</p>'}</div></section>
     <section class="card white tbl-card"><div class="card-head"><h2>Payment history</h2><span class="muted small">${pays.length} payments</span></div>
       <div class="tbl-wrap"><table class="ptbl"><thead><tr><th>Date</th><th>Project</th><th>Client</th><th>Type</th><th>Method</th><th class="num">Amount</th></tr></thead><tbody>
-      ${pays.map(x => { const p = S.project(x.projectId); return `<tr><td data-l="Date">${fdate(x.date)}</td><td data-l="Project"><a href="#/projects/${p.id}"><b class="p-title">${esc(p.title)}</b></a></td><td data-l="Client">${esc(S.client(p.clientId)?.name)}</td><td data-l="Type"><span class="type">${x.label === 'deposit' ? 'Deposit' : x.label === 'balance' ? 'Balance' : 'Installment'}</span></td><td data-l="Method">${esc(x.method)}</td><td data-l="Amount" class="num"><b>${money(x.amount)}</b></td></tr>`; }).join('')}
+      ${pays.map(x => { const p = S.project(x.projectId); return `<tr><td data-l="Date">${fdate(x.date)}</td><td data-l="Project" class="c-main"><a href="#/projects/${p.id}"><b class="p-title">${esc(p.title)}</b></a></td><td data-l="Client">${esc(S.client(p.clientId)?.name)}</td><td data-l="Type"><span class="type">${x.label === 'deposit' ? 'Deposit' : x.label === 'balance' ? 'Balance' : 'Installment'}</span></td><td data-l="Method">${esc(x.method)}</td><td data-l="Amount" class="num"><b>${money(x.amount)}</b></td></tr>`; }).join('')}
       </tbody></table></div></section>`;
 }
 
@@ -1296,9 +1296,9 @@ function renderRows() {
   const list = state.products.filter(p => (!state.cat || p.category === state.cat) && (!q || [p.name, p.sku, p.slug, catName(p.category), p.material].join(' ').toLowerCase().includes(q)));
   $('#empty').hidden = list.length > 0;
   $('#rows').innerHTML = list.map(p => `<tr data-slug="${esc(p.slug)}">
-      <td data-l="Product"><div class="pcell"><img src="${esc(img(p))}" alt="" loading="lazy" onerror="this.onerror=null;this.src='${A}hero-ivoire.webp'"><div><b class="p-title">${esc(p.name)}</b><small class="muted">${esc(p.sku || '')}</small></div></div></td>
+      <td data-l="Product" class="c-main"><div class="pcell"><img src="${esc(img(p))}" alt="" loading="lazy" onerror="this.onerror=null;this.src='${A}hero-ivoire.webp'"><div><b class="p-title">${esc(p.name)}</b><small class="muted">${esc(p.sku || '')}</small></div></div></td>
       <td data-l="Category">${esc(catName(p.category))}</td>
-      <td data-l="Price (MAD)" class="num"><form class="price-form"><input type="number" min="0" step="1" value="${+p.price || 0}" aria-label="Price of ${esc(p.name)}"><button class="icon-btn save" title="Save price" aria-label="Save price">${ico('check')}</button></form></td>
+      <td data-l="Price (MAD)" class="num c-price"><form class="price-form"><input type="number" min="0" step="1" value="${+p.price || 0}" aria-label="Price of ${esc(p.name)}"><button class="icon-btn save" title="Save price" aria-label="Save price">${ico('check')}</button></form></td>
       <td data-l="Tags">${p.new ? '<span class="type">New</span> ' : ''}${p.featured ? '<span class="type gold">Featured</span>' : ''}</td>
       <td class="act"><a class="icon-btn" href="../produit/${esc(p.slug)}/" target="_blank" rel="noopener" title="View on the website" aria-label="View on the website">${ico('eye')}</a><button class="icon-btn" data-edit title="Edit" aria-label="Edit">${ico('edit')}</button><button class="icon-btn danger" data-del title="Delete" aria-label="Delete">${ico('trash')}</button></td>
     </tr>`).join('');
