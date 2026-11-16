@@ -532,7 +532,7 @@ section.card+section.card{margin-top:18px}
 .rc-line .rc-ord,.rc-line .rc-qty,.rc-line .rc-unit{text-align:right}
 .rc-line .rc-qty{font-weight:700}
 .rc-total{font-weight:700}
-.inv-btns{display:flex;gap:8px;margin-top:12px}.inv-btns .btn{flex:1;justify-content:center}
+.inv-btns{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}.inv-btns .btn{flex:1 1 200px;min-width:0;justify-content:center}
 .confirm.inv-dialog{max-width:560px;margin:0 auto;text-align:left}.confirm.inv-dialog h2,.confirm.inv-dialog>p.muted{text-align:center}
 .inv-sum{display:grid;grid-template-columns:auto 1fr;gap:6px 18px;margin:14px 0;padding:14px 16px;border-radius:14px;background:var(--bg);border:1px solid var(--line);font-size:14px}
 .inv-sum dt{color:var(--muted)}.inv-sum dd{margin:0;text-align:right}
