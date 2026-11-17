@@ -182,12 +182,36 @@ const FR = {
   'Without a photo, the category image is used.': 'Sans photo, l’image de la catégorie est utilisée.', 'Click the photo to replace it.': 'Cliquez sur la photo pour la remplacer.', 'Add product': 'Ajouter le produit',
   'The product name is required.': 'Le nom du produit est obligatoire.', 'The name is required.': 'Le nom est obligatoire.', 'Choose a JPG, PNG or WebP image.': 'Choisissez une image JPG, PNG ou WebP.', 'Unreadable image.': 'Image illisible.',
   'The product and its page will be removed from the website. This cannot be undone.': 'Le produit et sa page seront retirés du site. Cette action est irréversible.',
-  'Could not create the product, please try again.': 'Impossible de créer le produit, veuillez réessayer.', 'Product not found or action not allowed.': 'Produit introuvable ou action non autorisée.'
+  'Could not create the product, please try again.': 'Impossible de créer le produit, veuillez réessayer.', 'Product not found or action not allowed.': 'Produit introuvable ou action non autorisée.',
+  // clients: document tabs, delivery progress, document chain
+  'Clients and documents': 'Clients et documents', 'Late': 'En retard', 'late': 'en retard', 'To deliver': 'À livrer', 'delivered': 'livré',
+  'Deliver': 'Livrer', 'Create a delivery note': 'Créer un bon de livraison', 'Create delivery note': 'Créer le bon de livraison', 'Confirm & deliver': 'Confirmer et livrer',
+  'Filter by status': 'Filtrer par statut', 'Search a number, client, subject…': 'Rechercher un numéro, un client, un objet…', 'Search documents': 'Rechercher des documents',
+  'Show all clients': 'Afficher tous les clients', 'No document matches these filters.': 'Aucun document ne correspond à ces filtres.',
+  'No quotes yet — use “New quote”.': 'Aucun devis pour l’instant — utilisez « Nouveau devis ».',
+  'No purchase orders yet — use “New purchase order” or create one from a quote.': 'Aucun bon de commande pour l’instant — utilisez « Nouveau bon de commande » ou créez-en un depuis un devis.',
+  'No delivery notes yet — use “Deliver” on a purchase order.': 'Aucun bon de livraison pour l’instant — utilisez « Livrer » sur un bon de commande.',
+  'No reception notes yet — use “New reception note” when goods arrive from a supplier.': 'Aucun bon de réception pour l’instant — utilisez « Nouveau bon de réception » à l’arrivée de la marchandise d’un fournisseur.',
+  'Confirm & create delivery note': 'Confirmer et créer le bon de livraison',
+  'A delivery note can only be made from a confirmed purchase order. It will be marked as confirmed, then the delivery note opens.': 'Un bon de livraison ne peut être créé que depuis un bon de commande confirmé. Il sera marqué comme confirmé, puis le bon de livraison s’ouvrira.',
+  'This purchase order is cancelled.': 'Ce bon de commande est annulé.',
+  'This client has no purchase order left to deliver. Create a purchase order first.': 'Ce client n’a aucun bon de commande à livrer. Créez d’abord un bon de commande.',
+  'No purchase order left to deliver. Create a purchase order first.': 'Aucun bon de commande à livrer. Créez d’abord un bon de commande.',
+  'Document chain': 'Chaîne des documents', 'No quote': 'Pas de devis', 'Not created yet': 'Pas encore créé', 'Not delivered yet': 'Pas encore livré', 'Not issued yet': 'Pas encore émise',
+  'Deliver everything': 'Tout livrer', 'Deliver nothing': 'Rien livrer', 'item(s) in this delivery note': 'article(s) dans ce bon de livraison',
+  'Check the quantities: at least one item, and never more than what is left to deliver.': 'Vérifiez les quantités : au moins un article, et jamais plus que le reste à livrer.',
+  'The quantity cannot be negative.': 'La quantité ne peut pas être négative.',
 };
 const n = s => +s;
 const pl = (k, one, many) => n(k) > 1 ? many : one;
 /* Sentences built with numbers / names */
 const RX = [
+  [/^Confirm purchase order (.+)\?$/, (_, a) => `Confirmer le bon de commande ${a} ?`],
+  [/^(\d+) line\(s\) above what is left to deliver$/, (_, a) => `${a} ligne(s) au-delà du reste à livrer`],
+  [/^Only ([\d.]+) left to deliver on this line\.$/, (_, a) => `Plus que ${a} à livrer sur cette ligne.`],
+  [/^([\d.]+) \/ ([\d.]+) delivered$/, (_, a, b) => `${a} / ${b} livrés`],
+  [/^(\d+) to deliver$/, (_, a) => `${a} à livrer`],
+  [/^The planned delivery date \((.+)\) is passed and ([\d.]+) item\(s\) are still to deliver\.$/, (_, a, b) => `La date de livraison prévue (${a}) est dépassée et ${b} article(s) restent à livrer.`],
   [/^(\d+) projects? in progress$/, (_, a) => `${a} projet${pl(a, '', 's')} en cours`],
   [/^(\d+) projects · (.+) due$/, (_, a, b) => `${a} projet${pl(a, '', 's')} · ${b} restant${pl(a, '', 's')}`],
   [/^(\d+) clients · (\d+) open quotes$/, (_, a, b) => `${a} client${pl(a, '', 's')} · ${b} devis ouvert${pl(b, '', 's')}`],

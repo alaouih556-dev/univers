@@ -223,11 +223,13 @@ function renderNotifs() {
 /* ---------------- router ---------------- */
 function renderRoute(fromStore = false) {
   const h = location.hash.replace(/^#\/?/, '');
-  const [page, id, sub] = h.split('/');
+  const [page, id, sub, extra] = h.split('/');
   const route = NAV.some(([k]) => k === page) ? page : 'dashboard';
-  const key = [route, id, sub].join('/');
+  const key = [route, id, sub, extra].join('/');
   const changed = key !== ui.key;
   ui.route = route; ui.id = id; ui.key = key;
+  if (route === 'clients' && id === 'tab') { ui.ctab = CTABS.some(([k]) => k === sub) ? sub : 'clients'; ui.cf = extra || ''; }
+  else if (route === 'clients' && !id) { ui.ctab = 'clients'; ui.cf = ''; }
   $$('[data-nav]').forEach(a => { const on = a.dataset.nav === route; a.classList.toggle('active', on); if (on) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); });
   const v = $('#view'), y = scrollY;
   const views = { dashboard: viewDashboard, projects: id ? () => viewProject(id) : viewProjects, clients: id === 'quote' && sub ? () => viewQuote(sub) : id === 'order' && sub ? () => viewOrder(sub) : id === 'delivery' && sub ? () => viewDelivery(sub) : id === 'receipt' && sub ? () => viewReceipt(sub) : id === 'invoice' && sub ? () => viewInvoice(sub) : viewClients, catalog: viewCatalog, payments: viewPayments, messages: viewMessages, settings: viewSettings };
@@ -455,71 +457,158 @@ function viewProject(id) {
 /* ---------------- clients ---------------- */
 const QS = S.QUOTE_STATUS;
 const qpill = st => `<span class="status q-${st}">${QS[st]}</span>`;
+/* the Clients page is split in tabs: #/clients/tab/<tab>[/<clientId>] (the client id filters the documents) */
+const CTABS = [['clients', 'Clients'], ['quotes', 'Quotes'], ['orders', 'Purchase orders'], ['deliveries', 'Delivery notes'], ['receipts', 'Reception notes'], ['invoices', 'Invoices']];
+const tabHref = (tab, clientId) => `#/clients/tab/${tab}${clientId ? '/' + clientId : ''}`;
+const tabOf = { quote: 'quotes', order: 'orders', delivery: 'deliveries', receipt: 'receipts', invoice: 'invoices' };
+/* purchase order delivery state: delivered / total quantities, and late when the planned date is passed */
+function orderProgress(o) {
+  const rem = S.remainingFor(o), all = rem.reduce((s, i) => s + (+i.qty || 0), 0), left = rem.reduce((s, i) => s + i.left, 0);
+  const open = o.status === 'draft' || o.status === 'confirmed';
+  return { all, done: Math.round((all - left) * 100) / 100, left, late: open && left > 0 && !!o.deliveryDate && S.parse(o.deliveryDate) < S.today() };
+}
+const progressBar = pr => `<span class="dlv-prog" title="${pr.done} / ${pr.all} delivered"><i style="width:${pr.all ? Math.round(pr.done / pr.all * 100) : 0}%"></i></span><small>${pr.done} / ${pr.all}</small>`;
+/* create a delivery note for an order; a draft order is confirmed first (one click instead of an error) */
+function startDelivery(o) {
+  if (o.status === 'cancelled') return toast('This purchase order is cancelled.', 'err');
+  if (!S.remainingFor(o).some(i => i.left > 0)) return toast('Everything on this purchase order has already been delivered.', 'err');
+  if (o.status !== 'draft') return openDeliveryEditor({ clientId: o.clientId, orderId: o.id });
+  confirmBox({ title: `Confirm purchase order ${o.number}?`, danger: false, ok: 'Confirm & create delivery note',
+    text: 'A delivery note can only be made from a confirmed purchase order. It will be marked as confirmed, then the delivery note opens.',
+    run: () => S.setOrderStatus(o.id, 'confirmed'), done: () => setTimeout(() => openDeliveryEditor({ clientId: o.clientId, orderId: o.id }), 300) });
+}
+function startClientDelivery(clientId) {
+  const os = deliverableOrders(clientId);
+  if (os.length) return openDeliveryEditor({ clientId, orderId: os[0].id });
+  const drafts = S.get().orders.filter(o => o.clientId === clientId && o.status === 'draft' && S.remainingFor(o).some(i => i.left > 0));
+  if (drafts.length) return startDelivery(drafts[0]);
+  toast('This client has no purchase order left to deliver. Create a purchase order first.', 'err');
+}
+/* Devis → Bon de commande → Bons de livraison → Facture, each step clickable; `cur` is the document shown */
+function docChain({ quote, order, cur }) {
+  const db = S.get();
+  if (!order && quote) order = db.orders.find(o => o.quoteId === quote.id) || null;
+  if (!quote && order?.quoteId) quote = S.quote(order.quoteId);
+  const ds = order ? db.deliveries.filter(d => d.orderId === order.id) : [];
+  const inv = db.invoices.find(x => (order && x.orderNumber === order.number) || (quote && (x.quoteNumber === quote.number || (quote.projectId && x.projectId === quote.projectId))));
+  const step = (lbl, items, next) => `<li class="${items.some(i => i.on) ? 'on' : items.length ? 'done' : ''}"><span class="dc-lbl">${lbl}</span>${items.length ? items.map(i => i.on ? `<b>${esc(i.n)}</b>` : `<a href="${i.href}">${esc(i.n)}</a>`).join('') : `<em>${next || '—'}</em>`}</li>`;
+  return `<ol class="doc-chain card white" aria-label="Document chain">
+    ${step('Quote', quote ? [{ n: quote.number, href: '#/clients/quote/' + quote.id, on: cur === quote.id }] : [], 'No quote')}
+    ${step('Purchase order', order ? [{ n: order.number, href: '#/clients/order/' + order.id, on: cur === order.id }] : [], quote ? 'Not created yet' : '—')}
+    ${step('Delivery notes', ds.map(d => ({ n: d.number, href: '#/clients/delivery/' + d.id, on: cur === d.id })), order ? 'Not delivered yet' : '—')}
+    ${step('Invoice', inv ? [{ n: inv.number, href: '#/clients/invoice/' + inv.id, on: cur === inv.id }] : [], 'Not issued yet')}
+  </ol>`;
+}
 function viewClients(v) {
-  const db = S.get(), q = (ui.cq || '').trim().toLowerCase();
+  const db = S.get(), tab = ui.ctab || 'clients', cf = ui.cf && S.client(ui.cf) ? ui.cf : '';
+  const counts = { clients: db.clients.length, quotes: db.quotes.length, orders: db.orders.length, deliveries: db.deliveries.length, receipts: db.receipts.length, invoices: db.invoices.length };
+  const toDeliver = db.orders.filter(o => o.status === 'confirmed' && S.remainingFor(o).some(i => i.left > 0)).length;
+  const tabs = `<nav class="ctabs" aria-label="Clients and documents">${CTABS.map(([k, l]) => `<a href="${tabHref(k, k === 'clients' ? '' : cf)}" class="${tab === k ? 'on' : ''}" ${tab === k ? 'aria-current="page"' : ''}><span>${l}</span><b>${counts[k]}</b>${k === 'orders' && toDeliver ? `<i class="ct-dot" title="${toDeliver} to deliver"></i>` : ''}</a>`).join('')}</nav>`;
+  const head = `${titleRow('Clients', `<div class="row-gap"><span class="chip"><i class="live"></i>${db.clients.length} clients · ${S.metrics().openQuotes} open quotes</span><button class="btn primary" id="addclient">${ico('plus')}New client</button></div>`)}${tabs}`;
+  if (tab === 'clients') { v.innerHTML = head + clientCards(db); wireClientCards(v, db); }
+  else { v.innerHTML = head + docTab(db, tab, cf); wireDocTab(v, db, tab, cf); }
+  const add = () => openClientForm(null);
+  $('#addclient', v).onclick = add; const a2 = $('#addclient2', v); if (a2) a2.onclick = add;
+  const on = $('.ctabs .on', v); if (on) on.parentElement.scrollLeft = on.offsetLeft - 16;
+}
+function clientCards(db) {
+  const q = (ui.cq || '').trim().toLowerCase();
   const rows = db.clients.map(c => { const ps = db.projects.filter(p => p.clientId === c.id); return { c, ps, qs: db.quotes.filter(x => x.clientId === c.id), os: db.orders.filter(x => x.clientId === c.id), ds: db.deliveries.filter(x => x.clientId === c.id), rs: db.receipts.filter(x => x.clientId === c.id), fs: db.invoices.filter(x => x.clientId === c.id), billed: ps.reduce((s, p) => s + p.totalPrice, 0), due: ps.reduce((s, p) => s + S.dueFor(p), 0), done: ps.some(p => p.status === 'finished') }; })
     .filter(r => !q || [r.c.name, r.c.city, r.c.email, r.c.phone, S.CLIENT_TYPES[r.c.type]].join(' ').toLowerCase().includes(q))
     .sort((a, b) => b.billed - a.billed || a.c.name.localeCompare(b.c.name));
-  const qf = ui.qf || '';
-  const quotes = db.quotes.filter(x => !qf || x.status === qf);
-  const of = ui.of || '', orders = db.orders.filter(x => !of || x.status === of);
-  v.innerHTML = `${titleRow('Clients', `<div class="row-gap"><span class="chip"><i class="live"></i>${db.clients.length} clients · ${S.metrics().openQuotes} open quotes</span><button class="btn primary" id="addclient">${ico('plus')}New client</button></div>`)}
-    <div class="toolbar tb-clients"><label class="search-pill">${ico('search')}<input type="search" id="csearch" placeholder="Search a client, city, email…" value="${esc(ui.cq || '')}" aria-label="Search clients"></label>
+  const docLink = (tab, list, lbl, c, extra = '') => list.length ? `<a class="cc-doc" href="${tabHref(tab, c.id)}"><b>${list.length}</b><span>${lbl}</span>${extra}</a>` : '';
+  return `<div class="toolbar tb-clients"><label class="search-pill">${ico('search')}<input type="search" id="csearch" placeholder="Search a client, city, email…" value="${esc(ui.cq || '')}" aria-label="Search clients"></label>
       <button class="btn outline" id="newquote">${ico('file')}New quote</button></div>
-    ${rows.length ? `<section class="client-grid">${rows.map(({ c, ps, qs, os, ds, rs, fs, billed, due, done }, i) => `<article class="card ${['white', 'sable', 'white', 'pastel'][i % 4]} client-card" data-client="${c.id}">
+    ${rows.length ? `<section class="client-grid">${rows.map(({ c, ps, qs, os, ds, rs, fs, billed, due, done }, i) => { const late = os.filter(o => orderProgress(o).late).length, todo = os.filter(o => o.status === 'confirmed' && S.remainingFor(o).some(x => x.left > 0)).length;
+      return `<article class="card ${['white', 'sable', 'white', 'pastel'][i % 4]} client-card" data-client="${c.id}">
       <div class="cc-top"><span class="cc-av">${esc(initials(c.name))}</span><div><b>${esc(c.name)}</b><small class="muted">${S.CLIENT_TYPES[c.type]}${c.city ? ' · ' + esc(c.city) : ''}</small>${done ? '<span class="chg pos cc-done">Completed</span>' : ''}</div>
         <div class="cc-act"><button class="icon-btn" data-editclient title="Edit client" aria-label="Edit ${esc(c.name)}">${ico('edit')}</button><button class="icon-btn danger" data-delclient title="Delete client" aria-label="Delete ${esc(c.name)}">${ico('trash')}</button></div></div>
       <ul class="contact compact">${c.phone ? `<li>${ico('phone')}<a href="tel:${esc(c.phone.replace(/\s/g, ''))}">${esc(c.phone)}</a></li>` : ''}${c.email ? `<li>${ico('mail')}<a href="mailto:${esc(c.email)}">${esc(c.email)}</a></li>` : ''}${c.address ? `<li>${ico('pin')}<span>${esc(c.address)}</span></li>` : ''}${!c.phone && !c.email && !c.address ? '<li class="muted">No contact details yet.</li>' : ''}</ul>
       <hr class="dash"><div class="cc-stats"><span><small>Projects</small><b>${ps.length}</b></span><span><small>Billed</small><b>${money(billed)}</b></span><span><small>Due</small><b class="${due ? 'gold-amount' : ''}">${money(due)}</b></span></div>
-      ${ps.length || qs.length || os.length || ds.length || rs.length || fs.length ? `<div class="cc-projects">${ps.map(p => `<a href="#/projects/${p.id}">${esc(p.title)} ${pill(p.status)}</a>`).join('')}${qs.map(x => `<a href="#/clients/quote/${x.id}">${ico('file')}<span class="cc-q">${esc(x.number)} · ${money(S.quoteTotals(x).total)}</span> ${qpill(x.status)}</a>`).join('')}${os.map(x => `<a href="#/clients/order/${x.id}">${ico('file')}<span class="cc-q">${esc(x.number)} · ${money(S.quoteTotals(x).total)}</span> ${opill(x.status)}</a>`).join('')}${ds.map(x => `<a href="#/clients/delivery/${x.id}">${ico('file')}<span class="cc-q">${esc(x.number)} · ${fdate(x.date)}</span> ${dpill(x.status)}</a>`).join('')}${rs.map(x => `<a href="#/clients/receipt/${x.id}">${ico('file')}<span class="cc-q">${esc(x.number)} · ${esc(x.supplier.name)}</span> ${rpill(x.status)}</a>`).join('')}${fs.map(x => `<a href="#/clients/invoice/${x.id}">${ico('file')}<span class="cc-q">${esc(x.number)} · ${money(x.total)}</span> <span class="status r-validated">Paid</span></a>`).join('')}</div>` : ''}
+      ${ps.length ? `<div class="cc-projects">${ps.map(p => `<a href="#/projects/${p.id}">${esc(p.title)} ${pill(p.status)}</a>`).join('')}</div>` : ''}
+      ${qs.length || os.length || ds.length || rs.length || fs.length ? `<div class="cc-docs">${docLink('quotes', qs, 'Quotes', c)}${docLink('orders', os, 'Purchase orders', c, late ? '<i class="cc-flag late-flag">Late</i>' : todo ? '<i class="cc-flag">To deliver</i>' : '')}${docLink('deliveries', ds, 'Delivery notes', c)}${docLink('receipts', rs, 'Reception notes', c)}${docLink('invoices', fs, 'Invoices', c)}</div>` : ''}
       <div class="cc-btns"><button class="btn pill-sm cc-quote" data-quoteclient>${ico('plus')}New quote</button><button class="btn pill-sm cc-quote" data-orderclient>${ico('plus')}Purchase order</button><button class="btn pill-sm cc-quote" data-deliveryclient>${ico('plus')}Delivery note</button><button class="btn pill-sm cc-quote" data-receiptclient>${ico('plus')}Reception note</button></div>
-</article>`).join('')}</section>`
-      : `<div class="card white empty-state"><p>${q ? 'No client matches your search.' : 'No clients yet.'}</p>${q ? '' : `<button class="btn primary" id="addclient2">${ico('plus')}Add your first client</button>`}</div>`}
-    <section class="card white tbl-card quotes-card"><div class="card-head"><h2>Quotes <span class="muted">(devis)</span></h2>
-      <div class="seg" role="tablist" aria-label="Filter quotes">${[['', 'All'], ...Object.entries(QS)].map(([k, l]) => `<button role="tab" aria-selected="${qf === k}" class="${qf === k ? 'on' : ''}" data-qf="${k}">${l}</button>`).join('')}</div></div>
-      ${quotes.length ? `<div class="tbl-wrap"><table class="ptbl"><thead><tr><th>Number</th><th>Client</th><th>Subject</th><th>Date</th><th>Valid until</th><th class="num">Total (TTC)</th><th>Status</th><th></th></tr></thead><tbody>
-      ${quotes.map(x => { const exp = S.quoteExpiry(x), expired = x.status === 'sent' && S.parse(exp) < S.today(); return `<tr><td data-l="Number"><b class="p-title">${esc(x.number)}</b></td><td data-l="Client">${esc(S.client(x.clientId)?.name)}</td><td data-l="Subject">${esc(x.title)}</td>
-        <td data-l="Date">${fdate(x.date)}</td><td data-l="Valid until" class="${expired ? 'late' : ''}">${fdate(exp)}${expired ? ' · expired' : ''}</td><td data-l="Total (TTC)" class="num"><b>${money(S.quoteTotals(x).total)}</b></td><td data-l="Status">${qpill(x.status)}${x.projectId ? ` <a class="type" href="#/projects/${x.projectId}">Project</a>` : ''}</td>
-        <td class="act"><a class="btn pill-sm" href="#/clients/quote/${x.id}">Open</a></td></tr>`; }).join('')}</tbody></table></div>`
-      : `<p class="empty">${qf ? 'No quote with this status.' : 'No quotes yet — use “New quote” on a client card.'}</p>`}</section>
-    <section class="card white tbl-card quotes-card"><div class="card-head"><h2>Purchase orders <span class="muted">(bons de commande)</span></h2>
-      <div class="seg" role="tablist" aria-label="Filter purchase orders">${[['', 'All'], ...Object.entries(OS)].map(([k, l]) => `<button role="tab" aria-selected="${of === k}" class="${of === k ? 'on' : ''}" data-of="${k}">${l}</button>`).join('')}</div></div>
-      ${orders.length ? `<div class="tbl-wrap"><table class="ptbl"><thead><tr><th>Number</th><th>Client</th><th>Subject</th><th>Date</th><th>Delivery</th><th class="num">Total (TTC)</th><th>Status</th><th></th></tr></thead><tbody>
-      ${orders.map(x => `<tr><td data-l="Number"><b class="p-title">${esc(x.number)}</b>${x.quoteId && S.quote(x.quoteId) ? `<small class="muted"> · ${esc(S.quote(x.quoteId).number)}</small>` : ''}</td><td data-l="Client">${esc(S.client(x.clientId)?.name)}</td><td data-l="Subject">${esc(x.title)}</td>
-        <td data-l="Date">${fdate(x.date)}</td><td data-l="Delivery">${x.deliveryDate ? fdate(x.deliveryDate) : '—'}</td><td data-l="Total (TTC)" class="num"><b>${money(S.quoteTotals(x).total)}</b></td><td data-l="Status">${opill(x.status)}</td>
-        <td class="act"><a class="btn pill-sm" href="#/clients/order/${x.id}">Open</a></td></tr>`).join('')}</tbody></table></div>`
-      : `<p class="empty">${of ? 'No purchase order with this status.' : 'No purchase orders yet — use “Purchase order” on a client card or on a quote.'}</p>`}</section>
-    <section class="card white tbl-card quotes-card"><div class="card-head"><h2>Delivery notes <span class="muted">(bons de livraison)</span></h2></div>
-      ${db.deliveries.length ? `<div class="tbl-wrap"><table class="ptbl"><thead><tr><th>Number</th><th>Client</th><th>Purchase order</th><th>Date</th><th class="num">Items</th><th>Status</th><th></th></tr></thead><tbody>
-      ${db.deliveries.map(x => `<tr><td data-l="Number"><b class="p-title">${esc(x.number)}</b></td><td data-l="Client">${esc(S.client(x.clientId)?.name)}</td><td data-l="Purchase order">${x.orderId && S.order(x.orderId) ? `<a href="#/clients/order/${x.orderId}">${esc(S.order(x.orderId).number)}</a>` : '—'}</td>
-        <td data-l="Date">${fdate(x.date)}</td><td data-l="Items" class="num">${x.items.reduce((s, i) => s + i.qty, 0)}</td><td data-l="Status">${dpill(x.status)}</td><td class="act"><a class="btn pill-sm" href="#/clients/delivery/${x.id}">Open</a></td></tr>`).join('')}</tbody></table></div>`
-      : `<p class="empty">No delivery notes yet — open a confirmed purchase order and use “Delivery note”.</p>`}</section>
-    <section class="card white tbl-card quotes-card"><div class="card-head"><h2>Reception notes <span class="muted">(bons de réception)</span></h2><span class="muted small">Goods received from suppliers, per client</span></div>
-      ${db.receipts.length ? `<div class="tbl-wrap"><table class="ptbl"><thead><tr><th>Number</th><th>Client</th><th>Supplier</th><th>Supplier delivery note</th><th>For order</th><th>Date</th><th class="num">Amount (no VAT)</th><th>Status</th><th></th></tr></thead><tbody>
-      ${db.receipts.map(x => `<tr><td data-l="Number"><b class="p-title">${esc(x.number)}</b></td><td data-l="Client">${esc(S.client(x.clientId)?.name)}</td><td data-l="Supplier">${esc(x.supplier.name)}</td><td data-l="Supplier delivery note">${esc(x.supplier.bl || '—')}</td>
-        <td data-l="For order">${x.orderId && S.order(x.orderId) ? `<a href="#/clients/order/${x.orderId}">${esc(S.order(x.orderId).number)}</a>` : '—'}</td>
-        <td data-l="Date">${fdate(x.date)}</td><td data-l="Amount (no VAT)" class="num"><b>${money(S.receiptTotals(x).total)}</b></td><td data-l="Status">${rpill(x.status)}</td><td class="act"><a class="btn pill-sm" href="#/clients/receipt/${x.id}">Open</a></td></tr>`).join('')}</tbody></table></div>`
-      : `<p class="empty">No reception notes yet — use “Reception note” on a client card when goods arrive from a supplier.</p>`}</section>
-    <section class="card white tbl-card quotes-card"><div class="card-head"><h2>Invoices <span class="muted">(factures)</span></h2><span class="muted small">Issued from fully paid projects</span></div>
-      ${db.invoices.length ? `<div class="tbl-wrap"><table class="ptbl"><thead><tr><th>Number</th><th>Client</th><th>Project</th><th>Date</th><th class="num">Total (TTC)</th><th></th></tr></thead><tbody>
-      ${db.invoices.map(x => `<tr><td data-l="Number"><b class="p-title">${esc(x.number)}</b></td><td data-l="Client">${esc(x.client?.name || '')}</td><td data-l="Project" class="c-main">${S.project(x.projectId) ? `<a href="#/projects/${x.projectId}">${esc(S.project(x.projectId).title)}</a>` : '—'}</td>
-        <td data-l="Date">${fdate(x.date)}</td><td data-l="Total (TTC)" class="num"><b>${money(x.total)}</b></td><td class="act"><a class="btn pill-sm" href="#/clients/invoice/${x.id}">Open</a></td></tr>`).join('')}</tbody></table></div>`
-      : `<p class="empty">No invoices yet — open a project: when the remaining amount is 0, use “Issue the invoice”.</p>`}</section>`;
-  const add = () => openClientForm(null);
-  $('#addclient', v).onclick = add; const a2 = $('#addclient2', v); if (a2) a2.onclick = add;
-  $('#newquote', v).onclick = () => db.clients.length ? openQuoteEditor({ clientId: rows[0]?.c.id || db.clients[0].id }) : toast('Add a client first.', 'err');
+</article>`; }).join('')}</section>`
+      : `<div class="card white empty-state"><p>${q ? 'No client matches your search.' : 'No clients yet.'}</p>${q ? '' : `<button class="btn primary" id="addclient2">${ico('plus')}Add your first client</button>`}</div>`}`;
+}
+function wireClientCards(v, db) {
+  $('#newquote', v).onclick = () => db.clients.length ? openQuoteEditor({ clientId: db.clients[0].id }) : toast('Add a client first.', 'err');
   const cs = $('#csearch', v); cs.oninput = debounce(() => { ui.cq = cs.value; viewClients(v); const n = $('#csearch'); n.focus(); n.setSelectionRange(n.value.length, n.value.length); }, 200);
-  $$('[data-qf]', v).forEach(b => b.onclick = () => { ui.qf = b.dataset.qf; viewClients(v); });
-  $$('[data-of]', v).forEach(b => b.onclick = () => { ui.of = b.dataset.of; viewClients(v); });
   $$('[data-client]', v).forEach(card => {
     const c = S.client(card.dataset.client);
     $('[data-editclient]', card).onclick = () => openClientForm(c);
     $('[data-delclient]', card).onclick = () => deleteClient(c);
     $('[data-quoteclient]', card).onclick = () => openQuoteEditor({ clientId: c.id });
     $('[data-orderclient]', card).onclick = () => openQuoteEditor({ clientId: c.id }, 'order');
-    $('[data-deliveryclient]', card).onclick = () => { const os = deliverableOrders(c.id); if (!os.length) return toast('This client has no confirmed purchase order left to deliver.', 'err'); openDeliveryEditor({ clientId: c.id, orderId: os[0].id }); };
+    $('[data-deliveryclient]', card).onclick = () => startClientDelivery(c.id);
     $('[data-receiptclient]', card).onclick = () => openReceiptEditor({ clientId: c.id });
   });
+}
+/* one documents tab: search + status filter + client filter + table */
+function docTab(db, tab, cf) {
+  const dq = (ui.dq || '').trim().toLowerCase(), st = (ui.dst || {})[tab] || '';
+  const cname = id => S.client(id)?.name || '';
+  const match = (x, ...extra) => (!cf || x.clientId === cf) && (!dq || [x.number, cname(x.clientId), ...extra].join(' ').toLowerCase().includes(dq));
+  const STAT = { quotes: QS, orders: { ...OS, late: 'Late' }, deliveries: DS, receipts: S.RECEIPT_STATUS }[tab];
+  const NEW = { quotes: 'New quote', orders: 'New purchase order', deliveries: 'New delivery note', receipts: 'New reception note' }[tab];
+  const seg = STAT ? `<div class="seg" role="tablist" aria-label="Filter by status">${[['', 'All'], ...Object.entries(STAT)].map(([k, l]) => `<button role="tab" aria-selected="${st === k}" class="${st === k ? 'on' : ''}" data-dst="${k}">${l}</button>`).join('')}</div>` : '';
+  const tools = `<div class="toolbar tb-docs"><label class="search-pill">${ico('search')}<input type="search" id="dsearch" placeholder="Search a number, client, subject…" value="${esc(ui.dq || '')}" aria-label="Search documents"></label>
+    ${cf ? `<a class="chip cf-chip" href="${tabHref(tab)}" title="Show all clients">${ico('user')}${esc(cname(cf))}${ico('x')}</a>` : ''}
+    ${NEW ? `<button class="btn primary" id="newdoc">${ico('plus')}${NEW}</button>` : ''}</div>`;
+  const empty = msg => `<p class="empty">${dq || st || cf ? 'No document matches these filters.' : msg}</p>`;
+  const card = (title, sub, body) => `<section class="card white tbl-card quotes-card"><div class="card-head"><h2>${title} <span class="muted">${sub}</span></h2>${seg}</div>${body}</section>`;
+  const open = (kind, id) => `<a class="btn pill-sm" href="#/clients/${kind}/${id}">Open</a>`;
+  if (tab === 'quotes') {
+    const list = db.quotes.filter(x => (!st || x.status === st) && match(x, x.title));
+    return tools + card('Quotes', '(devis)', list.length ? `<div class="tbl-wrap"><table class="ptbl"><thead><tr><th>Number</th><th>Client</th><th>Subject</th><th>Date</th><th>Valid until</th><th class="num">Total (TTC)</th><th>Status</th><th></th></tr></thead><tbody>
+      ${list.map(x => { const exp = S.quoteExpiry(x), expired = x.status === 'sent' && S.parse(exp) < S.today(); return `<tr><td data-l="Number"><b class="p-title">${esc(x.number)}</b></td><td data-l="Client">${esc(cname(x.clientId))}</td><td data-l="Subject">${esc(x.title)}</td>
+        <td data-l="Date">${fdate(x.date)}</td><td data-l="Valid until" class="${expired ? 'late' : ''}">${fdate(exp)}${expired ? ' · expired' : ''}</td><td data-l="Total (TTC)" class="num"><b>${money(S.quoteTotals(x).total)}</b></td><td data-l="Status">${qpill(x.status)}${x.projectId ? ` <a class="type" href="#/projects/${x.projectId}">Project</a>` : ''}</td>
+        <td class="act">${open('quote', x.id)}</td></tr>`; }).join('')}</tbody></table></div>` : empty('No quotes yet — use “New quote”.'));
+  }
+  if (tab === 'orders') {
+    const list = db.orders.map(x => ({ x, pr: orderProgress(x) })).filter(({ x, pr }) => (!st || (st === 'late' ? pr.late : x.status === st)) && match(x, x.title, S.quote(x.quoteId)?.number))
+      .sort((a, b) => (b.pr.late - a.pr.late) || String(b.x.date).localeCompare(String(a.x.date)));
+    return tools + card('Purchase orders', '(bons de commande)', list.length ? `<div class="tbl-wrap"><table class="ptbl"><thead><tr><th>Number</th><th>Client</th><th>Subject</th><th>Date</th><th>Delivery</th><th>Delivered</th><th class="num">Total (TTC)</th><th>Status</th><th></th></tr></thead><tbody>
+      ${list.map(({ x, pr }) => { const canDeliver = (x.status === 'draft' || x.status === 'confirmed') && pr.left > 0;
+        return `<tr class="${pr.late ? 'row-late' : ''}"><td data-l="Number"><b class="p-title">${esc(x.number)}</b>${x.quoteId && S.quote(x.quoteId) ? `<small class="muted"> · ${esc(S.quote(x.quoteId).number)}</small>` : ''}</td><td data-l="Client">${esc(cname(x.clientId))}</td><td data-l="Subject">${esc(x.title)}</td>
+        <td data-l="Date">${fdate(x.date)}</td><td data-l="Delivery" class="${pr.late ? 'late' : ''}">${x.deliveryDate ? fdate(x.deliveryDate) : '—'}${pr.late ? ' · late' : ''}</td>
+        <td data-l="Delivered"><span class="dlv-cell">${progressBar(pr)}</span></td><td data-l="Total (TTC)" class="num"><b>${money(S.quoteTotals(x).total)}</b></td><td data-l="Status">${opill(x.status)}</td>
+        <td class="act"><span class="act-2">${canDeliver ? `<button class="btn pill-sm primary" data-deliver="${x.id}" title="Create a delivery note">${ico('arrow')}Deliver</button>` : ''}${open('order', x.id)}</span></td></tr>`; }).join('')}</tbody></table></div>` : empty('No purchase orders yet — use “New purchase order” or create one from a quote.'));
+  }
+  if (tab === 'deliveries') {
+    const list = db.deliveries.filter(x => (!st || x.status === st) && match(x, S.order(x.orderId)?.number, S.order(x.orderId)?.title, x.carrier)).sort((a, b) => String(b.date).localeCompare(String(a.date)));
+    return tools + card('Delivery notes', '(bons de livraison)', list.length ? `<div class="tbl-wrap"><table class="ptbl"><thead><tr><th>Number</th><th>Client</th><th>Purchase order</th><th>Date</th><th>Driver / carrier</th><th class="num">Items</th><th>Status</th><th></th></tr></thead><tbody>
+      ${list.map(x => `<tr><td data-l="Number"><b class="p-title">${esc(x.number)}</b></td><td data-l="Client">${esc(cname(x.clientId))}</td><td data-l="Purchase order">${x.orderId && S.order(x.orderId) ? `<a href="#/clients/order/${x.orderId}">${esc(S.order(x.orderId).number)}</a>` : '—'}</td>
+        <td data-l="Date">${fdate(x.date)}</td><td data-l="Driver / carrier">${esc(x.carrier || '—')}</td><td data-l="Items" class="num">${x.items.reduce((s, i) => s + i.qty, 0)}</td><td data-l="Status">${dpill(x.status)}</td><td class="act">${open('delivery', x.id)}</td></tr>`).join('')}</tbody></table></div>`
+      : empty('No delivery notes yet — use “Deliver” on a purchase order.'));
+  }
+  if (tab === 'receipts') {
+    const list = db.receipts.filter(x => (!st || x.status === st) && match(x, x.supplier.name, x.supplier.bl, S.order(x.orderId)?.number));
+    return tools + card('Reception notes', '(bons de réception)', list.length ? `<div class="tbl-wrap"><table class="ptbl"><thead><tr><th>Number</th><th>Client</th><th>Supplier</th><th>Supplier delivery note</th><th>For order</th><th>Date</th><th class="num">Amount (no VAT)</th><th>Status</th><th></th></tr></thead><tbody>
+      ${list.map(x => `<tr><td data-l="Number"><b class="p-title">${esc(x.number)}</b></td><td data-l="Client">${esc(cname(x.clientId))}</td><td data-l="Supplier">${esc(x.supplier.name)}</td><td data-l="Supplier delivery note">${esc(x.supplier.bl || '—')}</td>
+        <td data-l="For order">${x.orderId && S.order(x.orderId) ? `<a href="#/clients/order/${x.orderId}">${esc(S.order(x.orderId).number)}</a>` : '—'}</td>
+        <td data-l="Date">${fdate(x.date)}</td><td data-l="Amount (no VAT)" class="num"><b>${money(S.receiptTotals(x).total)}</b></td><td data-l="Status">${rpill(x.status)}</td><td class="act">${open('receipt', x.id)}</td></tr>`).join('')}</tbody></table></div>`
+      : empty('No reception notes yet — use “New reception note” when goods arrive from a supplier.'));
+  }
+  const list = db.invoices.filter(x => (!cf || x.clientId === cf) && (!dq || [x.number, x.client?.name, S.project(x.projectId)?.title].join(' ').toLowerCase().includes(dq)));
+  return tools + card('Invoices', '(factures)', list.length ? `<div class="tbl-wrap"><table class="ptbl"><thead><tr><th>Number</th><th>Client</th><th>Project</th><th>Date</th><th class="num">Total (TTC)</th><th></th></tr></thead><tbody>
+      ${list.map(x => `<tr><td data-l="Number"><b class="p-title">${esc(x.number)}</b></td><td data-l="Client">${esc(x.client?.name || '')}</td><td data-l="Project" class="c-main">${S.project(x.projectId) ? `<a href="#/projects/${x.projectId}">${esc(S.project(x.projectId).title)}</a>` : '—'}</td>
+        <td data-l="Date">${fdate(x.date)}</td><td data-l="Total (TTC)" class="num"><b>${money(x.total)}</b></td><td class="act">${open('invoice', x.id)}</td></tr>`).join('')}</tbody></table></div>`
+      : empty('No invoices yet — open a project: when the remaining amount is 0, use “Issue the invoice”.'));
+}
+function wireDocTab(v, db, tab, cf) {
+  const ds = $('#dsearch', v); ds.oninput = debounce(() => { ui.dq = ds.value; viewClients(v); const n = $('#dsearch'); n.focus(); n.setSelectionRange(n.value.length, n.value.length); }, 200);
+  $$('[data-dst]', v).forEach(b => b.onclick = () => { ui.dst = { ...(ui.dst || {}), [tab]: b.dataset.dst }; viewClients(v); });
+  $$('[data-deliver]', v).forEach(b => b.onclick = () => startDelivery(S.order(b.dataset.deliver)));
+  const nb = $('#newdoc', v); if (!nb) return;
+  const cid = cf || db.clients[0]?.id;
+  nb.onclick = () => {
+    if (!cid) return toast('Add a client first.', 'err');
+    if (tab === 'quotes') openQuoteEditor({ clientId: cid });
+    else if (tab === 'orders') openQuoteEditor({ clientId: cid }, 'order');
+    else if (tab === 'receipts') openReceiptEditor({ clientId: cid });
+    else if (tab === 'deliveries') { if (cf) return startClientDelivery(cf); const o = db.orders.find(o => o.status === 'confirmed' && S.remainingFor(o).some(i => i.left > 0)) || db.orders.find(o => o.status === 'draft' && S.remainingFor(o).some(i => i.left > 0)); if (!o) return toast('No purchase order left to deliver. Create a purchase order first.', 'err'); startDelivery(o); }
+  };
 }
 
 function openClientForm(c) {
@@ -702,7 +791,7 @@ function viewQuote(id) {
   if (!q) { v.innerHTML = `${titleRow('Quote not found')}<p><a class="btn outline" href="#/clients">${ico('back')}Back to clients</a></p>`; return; }
   const c = S.client(q.clientId) || {}, co = S.get().company || {}, t = S.quoteTotals(q), exp = S.quoteExpiry(q), locked = !!(q.projectId && S.project(q.projectId));
   const legal = [co.ice && `ICE : ${co.ice}`, co.rc && `RC : ${co.rc}`, co.if_number && `IF : ${co.if_number}`, co.patente && `Patente : ${co.patente}`].filter(Boolean).join(' · ');
-  v.innerHTML = `<a class="back-link" href="#/clients">${ico('back')} Clients & quotes</a>
+  v.innerHTML = `<a class="back-link" href="${tabHref('quotes')}">${ico('back')} Quotes</a>
     <div class="title-row detail-title"><div><p class="lbl">Quote · ${esc(c.name || '')}</p><h1>${esc(q.number)}</h1></div>${qpill(q.status)}</div>
     <div class="quote-bar card white">
       <div class="seg" role="radiogroup" aria-label="Quote status">${Object.entries(QS).map(([k, l]) => `<button role="radio" aria-checked="${q.status === k}" class="${q.status === k ? 'on' : ''}" data-qstatus="${k}" ${locked ? 'disabled' : ''}>${l}</button>`).join('')}</div>
@@ -713,6 +802,7 @@ function viewQuote(id) {
         <button class="icon-btn danger" id="qdel" title="Delete quote" aria-label="Delete quote">${ico('trash')}</button>
       </div>
     </div>
+    ${docChain({ quote: q, cur: q.id })}
     ${!co.ice && !co.address ? `<p class="hint-bar">${ico('info')}<span>Add your company address, ICE and RC in <a href="#/settings">Settings</a> so they appear on the quote.</span></p>` : ''}
     <article class="quote-doc" lang="fr">
       <header class="qd-head">
@@ -760,20 +850,23 @@ function viewOrder(id) {
   const locked = o.status === 'delivered' || o.status === 'cancelled';
   const legal = [co.ice && `ICE : ${co.ice}`, co.rc && `RC : ${co.rc}`, co.if_number && `IF : ${co.if_number}`, co.patente && `Patente : ${co.patente}`].filter(Boolean).join(' · ');
   const qtyTotal = o.items.reduce((s, i) => s + (+i.qty || 0), 0);
-  v.innerHTML = `<a class="back-link" href="#/clients">${ico('back')} Clients & quotes</a>
+  const pr = orderProgress(o), canDeliver = (o.status === 'draft' || o.status === 'confirmed') && pr.left > 0;
+  v.innerHTML = `<a class="back-link" href="${tabHref('orders')}">${ico('back')} Purchase orders</a>
     <div class="title-row detail-title"><div><p class="lbl">Purchase order · ${esc(c.name || '')}</p><h1>${esc(o.number)}</h1></div>${opill(o.status)}</div>
     <div class="quote-bar card white">
       <div class="seg" role="radiogroup" aria-label="Order status">${Object.entries(OS).map(([k, l]) => `<button role="radio" aria-checked="${o.status === k}" class="${o.status === k ? 'on' : ''}" data-ostatus="${k}">${l}</button>`).join('')}</div>
       <div class="row-gap">
         ${q ? `<a class="btn outline" href="#/clients/quote/${q.id}">${ico('file')}Quote ${esc(q.number)}</a>` : ''}
         ${locked ? '' : `<button class="btn outline" id="oedit">${ico('edit')}Edit</button>`}
-        ${o.status === 'cancelled' ? '' : `<button class="btn outline" id="odeliver">${ico('file')}Delivery note</button><button class="btn outline" id="oreceipt">${ico('file')}Supplier reception</button>`}
+        ${canDeliver ? `<button class="btn primary" id="odeliver">${ico('arrow')}${o.status === 'draft' ? 'Confirm & deliver' : 'Create delivery note'}</button>` : ''}${o.status === 'cancelled' ? '' : `<button class="btn outline" id="oreceipt">${ico('file')}Supplier reception</button>`}
         <button class="btn outline" id="oprint">${ico('download')}Print / PDF</button>
         <button class="icon-btn danger" id="odel" title="Delete purchase order" aria-label="Delete purchase order">${ico('trash')}</button>
       </div>
     </div>
-    ${(() => { const ds = S.get().deliveries.filter(d => d.orderId === o.id); if (!ds.length) return ''; const rem = S.remainingFor(o), left = rem.reduce((s, i) => s + i.left, 0), all = rem.reduce((s, i) => s + i.qty, 0);
-      return `<section class="card white dl-progress"><div class="card-head"><h2>Delivery notes</h2><span class="muted small">${all - left} / ${all} delivered</span></div><div class="cc-projects">${ds.map(d => `<a href="#/clients/delivery/${d.id}">${ico('file')}<span class="cc-q">${esc(d.number)} · ${fdate(d.date)} · ${d.items.reduce((s, i) => s + i.qty, 0)} items</span> ${dpill(d.status)}</a>`).join('')}</div></section>`; })()}
+    ${docChain({ order: o, cur: o.id })}
+    ${pr.late ? `<p class="hint-bar warn">${ico('clock')}<span>The planned delivery date (${fdate(o.deliveryDate)}) is passed and ${pr.left} item(s) are still to deliver.</span></p>` : ''}
+    ${(() => { const ds = S.get().deliveries.filter(d => d.orderId === o.id); if (!ds.length) return '';
+      return `<section class="card white dl-progress"><div class="card-head"><h2>Delivery notes</h2><span class="dlv-cell">${progressBar(pr)}<span class="muted small">delivered</span></span></div><div class="cc-projects">${ds.map(d => `<a href="#/clients/delivery/${d.id}">${ico('file')}<span class="cc-q">${esc(d.number)} · ${fdate(d.date)} · ${d.items.reduce((s, i) => s + i.qty, 0)} items</span> ${dpill(d.status)}</a>`).join('')}</div></section>`; })()}
     ${!co.ice && !co.address ? `<p class="hint-bar">${ico('info')}<span>Add your company address, ICE and RC in <a href="#/settings">Settings</a> so they appear on the quote.</span></p>` : ''}
     <article class="quote-doc order-doc" lang="fr">
       <header class="qd-head">
@@ -806,11 +899,7 @@ function viewOrder(id) {
   $('#odel', v).onclick = () => confirmBox({ title: `Delete purchase order ${o.number}?`, text: 'The purchase order will be permanently deleted.', ok: 'Delete purchase order', run: () => S.removeOrder(o.id), done: () => { toast(`Purchase order ${o.number} deleted.`); location.hash = '#/clients'; } });
   const ed = $('#oedit', v); if (ed) ed.onclick = () => openQuoteEditor(o, 'order');
   const rv = $('#oreceipt', v); if (rv) rv.onclick = () => openReceiptEditor({ clientId: o.clientId, orderId: o.id, items: o.items.map(i => ({ label: i.label + (i.color ? ' — ' + i.color : ''), reference: '', qtyOrdered: i.qty, qty: i.qty, condition: 'ok', unit: '' })) });
-  const dv = $('#odeliver', v); if (dv) dv.onclick = () => {
-    if (o.status === 'draft') return toast('Confirm the purchase order before delivering it.', 'err');
-    if (!S.remainingFor(o).some(i => i.left > 0)) return toast('Everything on this purchase order has already been delivered.', 'err');
-    openDeliveryEditor({ clientId: o.clientId, orderId: o.id });
-  };
+  const dv = $('#odeliver', v); if (dv) dv.onclick = () => startDelivery(o);
 }
 
 /* ---------------- delivery notes (bons de livraison) ---------------- */
@@ -830,6 +919,7 @@ function openDeliveryEditor(d) {
       <label>Driver / carrier<input name="carrier" maxlength="120" value="${esc(d.carrier)}" placeholder="e.g. Our team, or the transport company"></label>
       <label class="full">Delivery address<input name="deliveryAddress" maxlength="300" value="${esc(d.deliveryAddress)}" placeholder="Address where the order is delivered"></label>
     </div>
+    <div class="dl-tools"><span class="dl-sum" id="dsum" aria-live="polite"></span><span class="row-gap"><button type="button" class="btn pill-sm" id="dall">${ico('check')}Deliver everything</button><button type="button" class="btn pill-sm" id="dnone">${ico('x')}Deliver nothing</button></span></div>
     <div class="q-lines"><div class="dl-head"><span></span><span>Item</span><span>Colour</span><span>Ordered</span><span>Delivered now</span><span></span></div>
       <div id="dlines"></div>
       <p class="muted small" id="dhint"></p></div>
@@ -862,15 +952,30 @@ function openDeliveryEditor(d) {
       $('#dhint', m).textContent = rem.some(i => i.left > 0) ? 'Set 0 for items delivered later — they stay on the order.' : 'Everything on this purchase order has already been delivered.';
       if (!keep && !f.deliveryAddress.value) f.deliveryAddress.value = o.deliveryAddress || '';
     }
+    check();
   };
+  /* live total + quantity checks: never more than what is left on the order */
+  const check = () => {
+    let total = 0, over = 0;
+    $$('.dl-line', lines).forEach(r => { const q = $('.dl-qty', r), max = q.max === '' ? Infinity : +q.max, n = +q.value || 0, bad = n < 0 || n > max;
+      total += Math.max(0, n); q.classList.toggle('invalid', bad); q.setAttribute('aria-invalid', bad); if (bad) over++;
+      r.classList.toggle('dl-zero', n === 0); r.title = bad ? (n < 0 ? 'The quantity cannot be negative.' : `Only ${max} left to deliver on this line.`) : ''; });
+    $('#dsum', m).innerHTML = `<b>${total}</b> <span>item(s) in this delivery note</span>${over ? ` · <span class="late">${over} line(s) above what is left to deliver</span>` : ''}`;
+    f.querySelector('[type=submit]').disabled = !!over || total <= 0;
+    return !over && total > 0;
+  };
+  lines.addEventListener('input', e => { if (e.target.classList.contains('dl-qty')) check(); });
+  $('#dall', m).onclick = () => { $$('.dl-line.from-order .dl-qty', lines).forEach(q => { q.value = q.max || q.value; }); check(); };
+  $('#dnone', m).onclick = () => { $$('.dl-line .dl-qty', lines).forEach(q => { q.value = 0; }); check(); };
   fillOrders();
   if (isNew && !d.deliveryAddress) { const c = S.client(f.clientId.value); f.deliveryAddress.value = (f.orderId.value && S.order(f.orderId.value)?.deliveryAddress) || [c?.address, c?.city].filter(Boolean).join(', '); }
   fillLines(!isNew);
   f.clientId.onchange = () => { d.orderId = null; fillOrders(); const o = S.order(f.orderId.value), c = S.client(f.clientId.value); f.deliveryAddress.value = o?.deliveryAddress || [c?.address, c?.city].filter(Boolean).join(', '); fillLines(false); };
   f.orderId.onchange = () => { const o = S.order(f.orderId.value); if (o?.deliveryAddress) f.deliveryAddress.value = o.deliveryAddress; fillLines(false); };
-  lines.addEventListener('click', e => { const b = e.target.closest('.dl-del'); if (!b) return; const r = b.closest('.dl-line'); if (r.classList.contains('from-order')) { $('.dl-qty', r).value = 0; } else r.remove(); });
+  lines.addEventListener('click', e => { const b = e.target.closest('.dl-del'); if (!b) return; const r = b.closest('.dl-line'); if (r.classList.contains('from-order')) { $('.dl-qty', r).value = 0; } else r.remove(); check(); });
   f.onsubmit = async e => {
     e.preventDefault(); const btn = f.querySelector('[type=submit]'), err = $('#derr', m);
+    if (!check()) { err.textContent = 'Check the quantities: at least one item, and never more than what is left to deliver.'; return; }
     const items = $$('.dl-line', lines).map(r => ({ label: $('.dl-label', r).value, color: $('.dl-color', r).value, qty: $('.dl-qty', r).value, qtyOrdered: r.dataset.ordered || null, image: r.dataset.image, description: r.dataset.desc, material: r.dataset.mat, dimensions: r.dataset.dim }));
     btn.disabled = true; err.textContent = '';
     try { const id = await S.saveDelivery({ id: d.id, clientId: f.clientId.value, orderId: f.orderId.value || null, date: f.date.value, carrier: f.carrier.value, deliveryAddress: f.deliveryAddress.value, notes: f.notes.value, items });
@@ -887,7 +992,7 @@ function viewDelivery(id) {
   const leftFor = i => { if (!rem) return null; const r = rem.find(x => [x.label, x.color, x.dimensions].join('|') === [i.label, i.color, i.dimensions].join('|')); return r ? r.left : null; };
   const legal = [co.ice && `ICE : ${co.ice}`, co.rc && `RC : ${co.rc}`, co.if_number && `IF : ${co.if_number}`, co.patente && `Patente : ${co.patente}`].filter(Boolean).join(' · ');
   const total = d.items.reduce((s, i) => s + i.qty, 0);
-  v.innerHTML = `<a class="back-link" href="${o ? '#/clients/order/' + o.id : '#/clients'}">${ico('back')} ${o ? esc(o.number) : 'Clients & quotes'}</a>
+  v.innerHTML = `<a class="back-link" href="${o ? '#/clients/order/' + o.id : tabHref('deliveries')}">${ico('back')} ${o ? esc(o.number) : 'Delivery notes'}</a>
     <div class="title-row detail-title"><div><p class="lbl">Delivery note · ${esc(c.name || '')}</p><h1>${esc(d.number)}</h1></div>${dpill(d.status)}</div>
     <div class="quote-bar card white">
       <div class="seg" role="radiogroup" aria-label="Delivery status">${Object.entries(DS).map(([k, l]) => `<button role="radio" aria-checked="${d.status === k}" class="${d.status === k ? 'on' : ''}" data-dstatus="${k}">${l}</button>`).join('')}</div>
@@ -898,6 +1003,7 @@ function viewDelivery(id) {
         <button class="icon-btn danger" id="ddel" title="Delete delivery note" aria-label="Delete delivery note">${ico('trash')}</button>
       </div>
     </div>
+    ${o ? docChain({ order: o, cur: d.id }) : ''}
     <article class="quote-doc order-doc delivery-doc" lang="fr">
       <header class="qd-head">
         <div class="qd-co"><img src="${A}luxor-logo-gold.webp" alt="${esc(co.name || 'Luxor Création')}"><div><b>${esc(co.name || 'Luxor Création')}</b>${co.tagline ? `<span>${esc(co.tagline)}</span>` : ''}${co.address || co.city ? `<span>${esc([co.address, co.city].filter(Boolean).join(', '))}</span>` : ''}${co.phone ? `<span>Tél. ${esc(co.phone)}</span>` : ''}${co.email ? `<span>${esc(co.email)}</span>` : ''}${co.ice ? `<span>ICE : ${esc(co.ice)}</span>` : ''}</div></div>
@@ -1020,7 +1126,7 @@ function viewReceipt(id) {
   const verdict = r.status === 'validated' ? '<p class="qd-verdict ok">Réception conforme — paiement du fournisseur autorisé.</p>'
     : r.status === 'dispute' ? '<p class="qd-verdict ko">Réception non conforme (litige) — paiement du fournisseur bloqué jusqu’à régularisation.</p>'
     : `<p class="qd-verdict">${compliant ? 'Contrôle : marchandise conforme, en attente de validation.' : 'Contrôle : écarts constatés (quantités ou état), à traiter.'}</p>`;
-  v.innerHTML = `<a class="back-link" href="${o ? '#/clients/order/' + o.id : '#/clients'}">${ico('back')} ${o ? esc(o.number) : 'Clients & quotes'}</a>
+  v.innerHTML = `<a class="back-link" href="${o ? '#/clients/order/' + o.id : tabHref('receipts')}">${ico('back')} ${o ? esc(o.number) : 'Reception notes'}</a>
     <div class="title-row detail-title"><div><p class="lbl">Reception note · ${esc(oc?.name || '')} · ${esc(sup.name)}</p><h1>${esc(r.number)}</h1></div>${rpill(r.status)}</div>
     <div class="quote-bar card white">
       <div class="seg" role="radiogroup" aria-label="Reception status">${Object.entries(RS).map(([k, l]) => `<button role="radio" aria-checked="${r.status === k}" class="${r.status === k ? 'on' : ''}" data-rstatus="${k}">${l}</button>`).join('')}</div>
@@ -1099,7 +1205,7 @@ function viewInvoice(id) {
   const co = x.company || {}, c = x.client || {}, p = S.project(x.projectId);
   const paid = (x.payments || []).reduce((s, y) => s + y.amount, 0);
   const legal = [co.ice && `ICE : ${co.ice}`, co.if_number && `IF : ${co.if_number}`, co.rc && `RC : ${co.rc}`, co.patente && `Patente : ${co.patente}`].filter(Boolean).join(' · ');
-  v.innerHTML = `<a class="back-link" href="${p ? '#/projects/' + p.id : '#/clients'}">${ico('back')} ${p ? esc(p.title) : 'Clients & quotes'}</a>
+  v.innerHTML = `<a class="back-link" href="${p ? '#/projects/' + p.id : tabHref('invoices')}">${ico('back')} ${p ? esc(p.title) : 'Invoices'}</a>
     <div class="title-row detail-title"><div><p class="lbl">Invoice · ${esc(c.name || '')}</p><h1>${esc(x.number)}</h1></div><span class="status r-validated">Paid</span></div>
     <div class="quote-bar card white"><p class="muted small">An invoice is a legal document: it cannot be changed or deleted.</p>
       <div class="row-gap">${p ? `<a class="btn outline" href="#/projects/${p.id}">${ico('file')}${esc(p.ref)}</a>` : ''}<button class="btn outline" id="iprint">${ico('file')}Print</button><button class="btn primary" id="idownload">${ico('download')}Download PDF</button></div></div>

@@ -769,3 +769,55 @@ body.pdf-export .quote-doc{border:0!important;box-shadow:none!important;border-r
   .split2{grid-template-columns:1fr 1fr}
 }
 @media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
+
+/* ---------------- clients: document tabs, delivery progress, document chain ---------------- */
+.ctabs{display:flex;gap:4px;padding:4px;margin:0 0 22px;border-radius:999px;background:var(--card);border:1px solid var(--line);overflow-x:auto;scrollbar-width:none;max-width:100%}
+.ctabs::-webkit-scrollbar{display:none}
+.ctabs a{position:relative;display:inline-flex;align-items:center;gap:8px;height:40px;padding:0 16px;border-radius:999px;color:var(--muted);font-weight:600;font-size:14px;text-decoration:none;white-space:nowrap;transition:.2s}
+.ctabs a:hover{color:var(--text)}
+.ctabs a b{min-width:22px;height:22px;padding:0 6px;border-radius:999px;display:inline-grid;place-items:center;font-size:12px;background:rgba(47,79,70,.08);color:inherit}
+.ctabs a.on{background:var(--vert);color:var(--ivoire)}.ctabs a.on b{background:rgba(249,247,242,.18)}
+[data-theme=dark] .ctabs a.on{background:var(--ivoire);color:var(--vert)}[data-theme=dark] .ctabs a.on b{background:rgba(47,79,70,.14)}
+.ct-dot{position:absolute;top:7px;right:8px;width:8px;height:8px;border-radius:50%;background:var(--or)}
+.tb-docs{display:flex;flex-wrap:wrap}
+.tb-docs .search-pill{background:var(--card);flex:0 1 420px}
+.tb-docs .btn.primary{margin-left:auto}
+.cf-chip{text-decoration:none;color:var(--text)}.cf-chip .i{width:15px;height:15px}.cf-chip:hover{border-color:var(--text)}
+.cc-docs{display:flex;flex-wrap:wrap;gap:6px;margin-top:14px}
+.cc-doc{display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 11px;border-radius:999px;border:1px solid var(--line);font-size:12.5px;font-weight:600;text-decoration:none;color:var(--text);background:var(--card)}
+.cc-doc:hover{border-color:var(--text)}
+.cc-doc b{font-size:13px}
+.cc-flag{font-style:normal;font-size:11px;padding:2px 7px;border-radius:999px;background:rgba(212,175,55,.2);color:var(--text)}
+.cc-flag.late-flag{background:var(--neg-bg);color:var(--neg-tx)}
+.dlv-cell{display:inline-flex;align-items:center;gap:8px;white-space:nowrap}
+.dlv-prog{display:inline-block;width:64px;height:6px;border-radius:999px;background:rgba(47,79,70,.12);overflow:hidden}
+.dlv-prog i{display:block;height:100%;border-radius:inherit;background:var(--vert)}
+[data-theme=dark] .dlv-prog{background:rgba(249,247,242,.14)}[data-theme=dark] .dlv-prog i{background:var(--pastel)}
+.ptbl tr.row-late td:first-child{box-shadow:inset 3px 0 0 var(--red)}
+.act-2{display:inline-flex;gap:6px;align-items:center}
+.btn.pill-sm.primary{background:var(--vert);color:var(--ivoire);border-color:var(--vert)}
+[data-theme=dark] .btn.pill-sm.primary{background:var(--ivoire);color:var(--vert);border-color:var(--ivoire)}
+.hint-bar.warn{background:var(--neg-bg)}.hint-bar.warn .i{color:var(--neg-tx)}
+.doc-chain{list-style:none;display:flex;gap:0;margin:0 0 16px;padding:14px 18px;overflow-x:auto}
+.doc-chain li{flex:1 0 150px;display:flex;flex-direction:column;gap:3px;padding:0 16px 0 22px;position:relative;font-size:13.5px}
+.doc-chain li::before{content:'';position:absolute;left:0;top:4px;width:11px;height:11px;border-radius:50%;border:2px solid var(--line);background:var(--card)}
+.doc-chain li+li{border-left:1px dashed var(--line);margin-left:-1px}
+.doc-chain li+li::before{left:8px}.doc-chain li+li{padding-left:30px}
+.doc-chain li.done::before{background:var(--pastel);border-color:var(--vert)}
+.doc-chain li.on::before{background:var(--vert);border-color:var(--vert)}
+.doc-chain .dc-lbl{font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
+.doc-chain a{font-weight:600}
+.doc-chain em{font-style:normal;color:var(--muted)}
+.dl-tools{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:6px 0 12px}
+.dl-sum{font-size:14px}
+.dl-line .dl-qty.invalid{border-color:var(--red);color:var(--red)}
+.dl-line.dl-zero{opacity:.55}
+@media (max-width:760px){
+  .tb-docs .search-pill{flex:1 1 100%}
+  .tb-docs .btn.primary{flex:1 1 100%;margin-left:0}
+  .doc-chain{flex-direction:column;gap:12px}
+  .doc-chain li,.doc-chain li+li{flex:none;border-left:0;padding-left:22px;margin-left:0}
+  .doc-chain li+li::before{left:0}
+  .act-2{width:100%}.act-2 .btn{flex:1}
+}
+@media print{body.print-quote .doc-chain,.ctabs{display:none!important}}
