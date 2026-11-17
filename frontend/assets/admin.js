@@ -234,6 +234,8 @@ function renderRoute(fromStore = false) {
   const v = $('#view'), y = scrollY;
   const views = { dashboard: viewDashboard, projects: id ? () => viewProject(id) : viewProjects, clients: id === 'quote' && sub ? () => viewQuote(sub) : id === 'order' && sub ? () => viewOrder(sub) : id === 'delivery' && sub ? () => viewDelivery(sub) : id === 'receipt' && sub ? () => viewReceipt(sub) : id === 'invoice' && sub ? () => viewInvoice(sub) : viewClients, catalog: viewCatalog, payments: viewPayments, messages: viewMessages, settings: viewSettings };
   views[route](v);
+  /* document tables: each cell knows its column title, so phones can show the rows as stacked cards */
+  $$('.qd-table', v).forEach(t => { const hs = [...(t.tHead?.rows[0]?.cells || [])].map(c => c.textContent.trim()); for (const tb of t.tBodies) for (const r of tb.rows) [...r.cells].forEach((c, i) => { c.dataset.l = hs[i] || ''; }); });
   document.title = `${NAV.find(([k]) => k === route)[1]} — Univers admin`;
   if (changed && !fromStore) { scrollTo(0, 0); v.focus({ preventScroll: true }); $('.nav-pill .active')?.scrollIntoView({ inline: 'center', block: 'nearest' }); }
   else scrollTo(0, y);
@@ -516,7 +518,8 @@ function clientCards(db) {
   const rows = db.clients.map(c => { const ps = db.projects.filter(p => p.clientId === c.id); return { c, ps, qs: db.quotes.filter(x => x.clientId === c.id), os: db.orders.filter(x => x.clientId === c.id), ds: db.deliveries.filter(x => x.clientId === c.id), rs: db.receipts.filter(x => x.clientId === c.id), fs: db.invoices.filter(x => x.clientId === c.id), billed: ps.reduce((s, p) => s + p.totalPrice, 0), due: ps.reduce((s, p) => s + S.dueFor(p), 0), done: ps.some(p => p.status === 'finished') }; })
     .filter(r => !q || [r.c.name, r.c.city, r.c.email, r.c.phone, S.CLIENT_TYPES[r.c.type]].join(' ').toLowerCase().includes(q))
     .sort((a, b) => b.billed - a.billed || a.c.name.localeCompare(b.c.name));
-  const docLink = (tab, list, lbl, c, extra = '') => list.length ? `<a class="cc-doc" href="${tabHref(tab, c.id)}"><b>${list.length}</b><span>${lbl}</span>${extra}</a>` : '';
+  const ONE = { Quotes: 'Quote', 'Purchase orders': 'Purchase order', 'Delivery notes': 'Delivery note', 'Reception notes': 'Reception note', Invoices: 'Invoice' };
+  const docLink = (tab, list, lbl, c, extra = '') => list.length ? `<a class="cc-doc" href="${tabHref(tab, c.id)}"><b>${list.length}</b><span>${list.length === 1 ? ONE[lbl] : lbl}</span>${extra}</a>` : '';
   return `<div class="toolbar tb-clients"><label class="search-pill">${ico('search')}<input type="search" id="csearch" placeholder="Search a client, city, email…" value="${esc(ui.cq || '')}" aria-label="Search clients"></label>
       <button class="btn outline" id="newquote">${ico('file')}New quote</button></div>
     ${rows.length ? `<section class="client-grid">${rows.map(({ c, ps, qs, os, ds, rs, fs, billed, due, done }, i) => { const late = os.filter(o => orderProgress(o).late).length, todo = os.filter(o => o.status === 'confirmed' && S.remainingFor(o).some(x => x.left > 0)).length;

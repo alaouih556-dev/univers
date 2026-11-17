@@ -821,3 +821,56 @@ body.pdf-export .quote-doc{border:0!important;box-shadow:none!important;border-r
   .act-2{width:100%}.act-2 .btn{flex:1}
 }
 @media print{body.print-quote .doc-chain,.ctabs{display:none!important}}
+
+/* ---------- phone polish (screen only: the print layout is untouched) ---------- */
+@media screen and (max-width:760px){
+  /* quote / reception lines: the product picker takes the full width */
+  .ql-main .ql-pick{grid-column:2/-1}
+  .ql-main .ql-unit{grid-column:3/-1}
+  .rc-line .ql-pick{grid-column:1/3}
+  .ql-pick select{font-size:16px}
+  .fields input,.fields select,.fields textarea,.q-line input,.dl-line input,.rc-line input,.rc-line select,.search-pill input{font-size:16px}   /* no iOS zoom on focus */
+  /* lists: compact 2-column cards instead of one label per row */
+  .ptbl tr{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px 14px;padding:14px 0}
+  .ptbl td{display:flex;flex-direction:column;align-items:flex-start;justify-content:flex-start;gap:2px;padding:0;text-align:left;min-width:0;overflow-wrap:anywhere}
+  .ptbl td::before{font-size:11.5px;font-weight:600}
+  .ptbl tr:not(:has(td.c-main)) td:first-child,.ptbl td.c-main{grid-column:1/-1}
+  .ptbl td.act:not(:has(.btn)){grid-column:2;justify-content:flex-end;align-self:end;padding-top:0}
+  .ptbl td.c-main{order:-1;padding-bottom:2px}
+  .ptbl td.num{text-align:left}
+  .ptbl td.act{grid-column:1/-1;flex-direction:row;justify-content:stretch;padding-top:4px}
+  .ptbl td.act>.btn,.ptbl td.act .act-2{flex:1}
+  .ptbl td.act:has(.icon-btn):not(:has(.btn)){justify-content:flex-end}
+  .ptbl td[data-l="Status"] .status{align-self:flex-start}
+  .dlv-cell{gap:6px}
+  /* document action bar: tidy 2-column grid */
+  .quote-bar .row-gap{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+  .quote-bar .row-gap .btn{width:100%;min-width:0;padding:0 8px;font-size:13px;gap:6px;overflow:hidden;white-space:nowrap}
+  .quote-bar .row-gap .icon-btn{width:100%;border-radius:999px}
+  .quote-bar .row-gap>:only-child,.quote-bar .row-gap>.btn.primary{grid-column:1/-1}
+  /* document chain: 2 x 2 */
+  .doc-chain{display:grid;grid-template-columns:1fr 1fr;gap:14px 10px;padding:14px}
+  .doc-chain li,.doc-chain li+li{border-left:0;margin:0;padding:0 0 0 18px}
+  .doc-chain li::before,.doc-chain li+li::before{left:0}
+  /* documents (devis, BC, BL, BR, facture): item table becomes stacked rows */
+  .qd-table-wrap{overflow:visible}
+  .qd-table{min-width:0!important}
+  .qd-table thead{display:none}
+  .qd-table,.qd-table tbody,.qd-table tfoot{display:block;width:100%}
+  .qd-table tbody tr{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 12px;padding:12px 0;border-bottom:1px solid #E9DDC8}
+  .qd-table tbody td{display:flex;flex-direction:column;gap:1px;padding:0;border:0;text-align:left!important;white-space:normal}
+  .qd-table tbody td::before{content:attr(data-l);font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#8a7a55}
+  .qd-table tbody td:first-child{grid-column:1/-1}
+  .qd-table tbody td:first-child::before,.qd-table tbody td[data-l=""]::before{content:none}
+  .qd-table tfoot tr{display:flex;justify-content:space-between;gap:12px;background:none}
+  .qd-table tfoot td{padding:10px 0;border:0}
+  .qd-table tfoot td:empty{display:none}
+  .qd-item{gap:10px}
+  .cc-btns{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .cc-btns .btn{width:100%;justify-content:center;padding:0 8px}
+  /* tap targets */
+  .contact.compact li a{padding:5px 0;display:inline-block}
+  .kpi-link{display:inline-block;padding:6px 0}
+  .back-link{padding:8px 0}
+  .doc-chain a{padding:3px 0;display:inline-block}
+}
